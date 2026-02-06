@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+        id="de.miguel0888.naturalone.ai.feature"
+        label="NaturalOne AI Feature"
+        version="0.0.1.qualifier">
+
+    <plugin
+            id="de.miguel0888.naturalone.ai"
+            download-size="0"
+            install-size="0"
+            version="0.0.1.qualifier"
+            unpack="false"/>
+</feature>

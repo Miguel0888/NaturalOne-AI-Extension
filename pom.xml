@@ -3,12 +3,46 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>de.miguel0888.naturalone</groupId>
-        <artifactId>naturalone-ai-extension</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
-    </parent>
+    <groupId>de.miguel0888.naturalone</groupId>
+    <artifactId>naturalone-ai-extension</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
-    <artifactId>naturalone-ai-repository</artifactId>
-    <packaging>eclipse-repository</packaging>
+    <modules>
+        <module>naturalone-ai-plugin</module>
+        <module>naturalone-ai-feature</module>
+        <module>naturalone-ai-repository</module>
+    </modules>
+
+    <properties>
+        <tycho.version>4.0.9</tycho.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <version>${tycho.version}</version>
+                <configuration>
+                    <resolver>p2</resolver>
+                    <repositories>
+                        <repository>
+                            <id>eclipse-2020-06</id>
+                            <layout>p2</layout>
+                            <url>https://download.eclipse.org/releases/2020-06</url>
+                        </repository>
+                    </repositories>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
