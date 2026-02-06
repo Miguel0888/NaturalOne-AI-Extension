@@ -1,18 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<target name="Eclipse Neon.3 (4.6.3)" sequenceNumber="1">
+<target name="Eclipse Neon.3 IDE + EMF" sequenceNumber="1">
     <locations>
-        <location includeAllPlatforms="false"
-                  includeMode="slicer"
-                  includeSource="false"
-                  type="InstallableUnit">
-            <repository location="https://download.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/"/>
-            <repository location="https://download.eclipse.org/modeling/emf/emf/builds/release/2.12/"/>
+        <location
+            includeAllPlatforms="false"
+            includeMode="slicer"
+            includeSource="false"
+            type="InstallableUnit">
 
-            <unit id="org.eclipse.sdk.ide" version="0.0.0"/>
-            <unit id="org.eclipse.emf.common" version="0.0.0"/>
-            <unit id="org.eclipse.emf.ecore" version="0.0.0"/>
-            <unit id="org.eclipse.emf.ecore.xmi" version="0.0.0"/>
-            <unit id="org.eclipse.emf.ecore.change" version="0.0.0"/>
+            <!-- Eclipse Platform -->
+            <repository location="https://download.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/"/>
+
+            <!-- Eclipse Release Train Neon -->
+            <repository location="https://download.eclipse.org/releases/neon/201703231000/"/>
+
+            <!-- Eclipse IDE -->
+            <unit id="org.eclipse.platform.ide" version="0.0.0"/>
+
+            <!-- EMF (DAS FEHLT DIR) -->
+            <unit id="org.eclipse.emf.sdk.feature.group" version="0.0.0"/>
+
         </location>
     </locations>
 </target>
