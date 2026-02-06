@@ -9,6 +9,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>naturalone-ai-plugin</artifactId>
+    <artifactId>de.miguel0888.naturalone.ai</artifactId>
     <packaging>eclipse-plugin</packaging>
 </project>

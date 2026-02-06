@@ -9,6 +9,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>de.miguel0888.naturalone.ai.feature</artifactId>
-    <packaging>eclipse-feature</packaging>
+    <artifactId>naturalone-ai-target</artifactId>
+    <packaging>eclipse-target-definition</packaging>
 </project>
