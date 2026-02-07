@@ -1,26 +1,22 @@
 @ECHO OFF
 SETLOCAL
 
-SET "BASEDIR=%~dp0"
-REM Remove trailing backslash
-IF "%BASEDIR:~-1%"=="\" SET "BASEDIR=%BASEDIR:~0,-1%"
+REM Resolve project base dir (directory of this script)
+SET "MAVEN_PROJECTBASEDIR=%~dp0"
+IF "%MAVEN_PROJECTBASEDIR:~-1%"=="\" SET "MAVEN_PROJECTBASEDIR=%MAVEN_PROJECTBASEDIR:~0,-1%"
 
-SET "WRAPPER_JAR=%BASEDIR%\.mvn\wrapper\maven-wrapper.jar"
-SET "WRAPPER_LAUNCHER=org.apache.maven.wrapper.MavenWrapperMain"
+SET "WRAPPER_JAR=%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\maven-wrapper.jar"
+SET "WRAPPER_PROPS=%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\maven-wrapper.properties"
+SET "WRAPPER_DOWNLOADER=%MAVEN_PROJECTBASEDIR%\.mvn\wrapper\MavenWrapperDownloader.java"
 
 IF NOT EXIST "%WRAPPER_JAR%" (
   ECHO Downloading Maven wrapper...
-  PUSHD "%BASEDIR%"
-  "%JAVA_HOME%\bin\javac.exe" "%BASEDIR%\.mvn\wrapper\MavenWrapperDownloader.java" 2>NUL
-  IF ERRORLEVEL 1 (
-    javac "%BASEDIR%\.mvn\wrapper\MavenWrapperDownloader.java"
-  )
-  "%JAVA_HOME%\bin\java.exe" -cp "%BASEDIR%\.mvn\wrapper" MavenWrapperDownloader "%BASEDIR%" 2>NUL
-  IF ERRORLEVEL 1 (
-    java -cp "%BASEDIR%\.mvn\wrapper" MavenWrapperDownloader "%BASEDIR%"
-  )
-  POPD
+  "%JAVA_HOME%\bin\java.exe" -cp "%MAVEN_PROJECTBASEDIR%\.mvn\wrapper" MavenWrapperDownloader "%WRAPPER_PROPS%"
 )
 
-java -classpath "%WRAPPER_JAR%" %WRAPPER_LAUNCHER% %*
+"%JAVA_HOME%\bin\java.exe" ^
+  -Dmaven.multiModuleProjectDirectory="%MAVEN_PROJECTBASEDIR%" ^
+  -classpath "%WRAPPER_JAR%" ^
+  org.apache.maven.wrapper.MavenWrapperMain %*
+
 ENDLOCAL
