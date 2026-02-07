@@ -1,23 +1,25 @@
 package de.bund.zrb.natural.ui.chat;
 
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
 /**
- * Provide a minimal chat UI that can run without any external systems.
+ * Provide a minimal chat-like view with transcript + input field.
  */
 public final class ChatView extends ViewPart {
 
-    public static final String ID = "de.bund.zrb.natural.codeinsightbridge.ui.chatView";
+    public static final String VIEW_ID = "de.bund.zrb.natural.codeinsightbridge.ui.views.chat";
 
-    private StyledText conversation;
+    private StyledText transcript;
     private Text input;
 
     @Override
@@ -25,80 +27,53 @@ public final class ChatView extends ViewPart {
         Composite root = new Composite(parent, SWT.NONE);
         root.setLayout(new GridLayout(1, false));
 
-        createConversationArea(root);
-        createInputArea(root);
+        transcript = new StyledText(root, SWT.BORDER | SWT.V_SCROLL | SWT.H_SCROLL | SWT.READ_ONLY);
+        transcript.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
-        appendSystemMessage("Ready. Type a message and press Enter.");
-    }
+        Composite inputRow = new Composite(root, SWT.NONE);
+        inputRow.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        inputRow.setLayout(new GridLayout(2, false));
 
-    private void createConversationArea(Composite parent) {
-        ScrolledComposite scrolled = new ScrolledComposite(parent, SWT.V_SCROLL | SWT.H_SCROLL | SWT.BORDER);
-        scrolled.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-        scrolled.setExpandHorizontal(true);
-        scrolled.setExpandVertical(true);
-
-        conversation = new StyledText(scrolled, SWT.READ_ONLY | SWT.WRAP | SWT.MULTI);
-        conversation.setAlwaysShowScrollBars(false);
-
-        scrolled.setContent(conversation);
-        scrolled.setMinSize(conversation.computeSize(SWT.DEFAULT, SWT.DEFAULT));
-
-        conversation.addModifyListener(e -> scrolled.setMinSize(conversation.computeSize(SWT.DEFAULT, SWT.DEFAULT)));
-    }
-
-    private void createInputArea(Composite parent) {
-        Composite inputBar = new Composite(parent, SWT.NONE);
-        inputBar.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-        inputBar.setLayout(new GridLayout(2, false));
-
-        input = new Text(inputBar, SWT.BORDER);
+        input = new Text(inputRow, SWT.BORDER);
         input.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        input.addListener(SWT.DefaultSelection, event -> send());
 
-        Button send = new Button(inputBar, SWT.PUSH);
-        send.setText("Send");
-        send.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, false, false));
+        Button sendButton = new Button(inputRow, SWT.PUSH);
+        sendButton.setText("Send");
+        sendButton.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, false, false));
+        sendButton.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                send();
+            }
+        });
 
-        send.addListener(SWT.Selection, e -> sendMessage());
-        input.addListener(SWT.DefaultSelection, e -> sendMessage());
+        appendLine("System", "Chat view ready.");
     }
 
-    private void sendMessage() {
-        String message = input.getText();
-        input.setText("");
-
-        if (message == null || message.trim().isEmpty()) {
+    private void send() {
+        String text = input.getText();
+        if (text == null) {
+            return;
+        }
+        text = text.trim();
+        if (text.isEmpty()) {
             return;
         }
 
-        appendUserMessage(message.trim());
-        appendAssistantMessage(createPlaceholderAnswer(message.trim()));
+        input.setText("");
+        appendLine("You", text);
+
+        // Simulate a response. Replace with real integration later.
+        final String response = "Echo: " + text;
+        Display.getDefault().asyncExec(() -> appendLine("Assistant", response));
     }
 
-    private String createPlaceholderAnswer(String userMessage) {
-        return "(dummy) I received: " + userMessage;
-    }
-
-    private void appendSystemMessage(String message) {
-        appendLine("[system] " + message);
-    }
-
-    private void appendUserMessage(String message) {
-        appendLine("[you] " + message);
-    }
-
-    private void appendAssistantMessage(String message) {
-        appendLine("[assistant] " + message);
-    }
-
-    private void appendLine(String line) {
-        String current = conversation.getText();
-        if (current == null || current.isEmpty()) {
-            conversation.setText(line);
-        } else {
-            conversation.setText(current + "\n" + line);
-        }
-        conversation.setSelection(conversation.getCharCount());
-        conversation.showSelection();
+    private void appendLine(String speaker, String message) {
+        String line = speaker + ": " + message + System.lineSeparator();
+        transcript.append(line);
+        transcript.setSelection(transcript.getCharCount());
+        transcript.showSelection();
     }
 
     @Override

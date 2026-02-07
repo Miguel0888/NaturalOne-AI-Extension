@@ -2,6 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>de.bund.zrb</groupId>
@@ -11,15 +12,13 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-
-    <!-- Tycho -->
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
     <tycho.version>1.7.0</tycho.version>
-
-    <!-- Tycho 1.7: disable mirrors via property -->
-    <tycho.disableP2Mirrors>true</tycho.disableP2Mirrors>
   </properties>
 
   <modules>
+    <module>releng/target-platform</module>
     <module>de.bund.zrb.natural.codeinsightbridge</module>
     <module>de.bund.zrb.natural.codeinsightbridge.ui</module>
     <module>de.bund.zrb.natural.codeinsightbridge.feature</module>
@@ -29,7 +28,6 @@
   <build>
     <plugins>
 
-      <!-- Enable Tycho packaging types -->
       <plugin>
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-maven-plugin</artifactId>
@@ -37,7 +35,6 @@
         <extensions>true</extensions>
       </plugin>
 
-      <!-- Define the target platform -->
       <plugin>
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>target-platform-configuration</artifactId>
@@ -53,23 +50,16 @@
 
           <resolver>p2</resolver>
 
-          <repositories>
-            <repository>
-              <id>eclipse-platform-neon-4.6.3-archive</id>
-              <layout>p2</layout>
-              <url>http://archive.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/</url>
-            </repository>
-            <repository>
-              <id>eclipse-release-neon-archive</id>
-              <layout>p2</layout>
-              <url>http://archive.eclipse.org/releases/neon/</url>
-            </repository>
-          </repositories>
-
+          <target>
+            <artifact>
+              <groupId>${project.groupId}</groupId>
+              <artifactId>natural-code-insight-bridge-target</artifactId>
+              <version>${project.version}</version>
+            </artifact>
+          </target>
         </configuration>
       </plugin>
 
-      <!-- Compile plugin code for Java 8 -->
       <plugin>
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-compiler-plugin</artifactId>
