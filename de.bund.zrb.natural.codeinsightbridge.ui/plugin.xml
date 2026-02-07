@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+
+    <extension point="org.eclipse.ui.views">
+        <category
+                id="de.bund.zrb.natural.codeinsightbridge.category"
+                name="Natural Code Insight"/>
+
+        <view
+                id="de.bund.zrb.natural.codeinsightbridge.ui.chatView"
+                name="Code Insight Chat"
+                category="de.bund.zrb.natural.codeinsightbridge.category"
+                class="de.bund.zrb.natural.ui.chat.ChatView"/>
+    </extension>
+
+</plugin>

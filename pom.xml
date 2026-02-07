@@ -21,6 +21,7 @@
 
   <modules>
     <module>de.bund.zrb.natural.codeinsightbridge</module>
+    <module>de.bund.zrb.natural.codeinsightbridge.ui</module>
     <module>de.bund.zrb.natural.codeinsightbridge.feature</module>
     <module>de.bund.zrb.natural.codeinsightbridge.repository</module>
   </modules>

@@ -16,4 +16,11 @@
          version="0.0.0"
          unpack="false"/>
 
+   <plugin
+         id="de.bund.zrb.natural.codeinsightbridge.ui"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
 </feature>
