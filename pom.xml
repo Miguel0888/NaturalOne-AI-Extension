@@ -12,13 +12,18 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <tycho.version>1.7.0</tycho.version>
+
+    <!-- IMPORTANT: Do NOT use maven.compiler.release with Java 8 builds -->
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
-    <tycho.version>1.7.0</tycho.version>
   </properties>
 
   <modules>
+    <!-- Target platform module -->
     <module>releng/target-platform</module>
+
+    <!-- Plugins / Features / Repository -->
     <module>de.bund.zrb.natural.codeinsightbridge</module>
     <module>de.bund.zrb.natural.codeinsightbridge.ui</module>
     <module>de.bund.zrb.natural.codeinsightbridge.feature</module>
@@ -48,15 +53,16 @@
             </environment>
           </environments>
 
-          <resolver>p2</resolver>
-
+          <!-- Use the target definition produced by the releng module -->
           <target>
             <artifact>
-              <groupId>${project.groupId}</groupId>
+              <groupId>de.bund.zrb</groupId>
               <artifactId>natural-code-insight-bridge-target</artifactId>
               <version>${project.version}</version>
             </artifact>
           </target>
+
+          <resolver>p2</resolver>
         </configuration>
       </plugin>
 
@@ -67,6 +73,7 @@
         <configuration>
           <source>1.8</source>
           <target>1.8</target>
+          <useProjectSettings>false</useProjectSettings>
         </configuration>
       </plugin>
 
