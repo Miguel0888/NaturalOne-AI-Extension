@@ -3,8 +3,10 @@ Bundle-ManifestVersion: 2
 Bundle-Name: NaturalOne AI Plugin
 Bundle-SymbolicName: de.miguel0888.naturalone.ai;singleton:=true
 Bundle-Version: 0.0.1.qualifier
-Require-Bundle: org.eclipse.ui,
- org.eclipse.core.runtime
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.ui,
+ org.eclipse.jface,
+ org.eclipse.swt
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Bundle-ActivationPolicy: lazy
 
