@@ -6,7 +6,7 @@
       provider-name="ZRB">
 
    <description>
-      NaturalONE integration helpers.
+      Simple Eclipse view plugin skeleton.
    </description>
 
    <plugin

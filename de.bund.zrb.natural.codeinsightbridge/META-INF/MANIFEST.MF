@@ -5,8 +5,6 @@ Bundle-SymbolicName: de.bund.zrb.natural.codeinsightbridge;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-Activator: natural_code_insight_bridge.Activator
 Require-Bundle: org.eclipse.ui,
- org.eclipse.core.runtime,
- com.softwareag.naturalone.natural.natstyle;bundle-version="8.4.1",
- com.softwareag.naturalone.natural.parser;bundle-version="8.4.1"
+ org.eclipse.core.runtime
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Bundle-ActivationPolicy: lazy

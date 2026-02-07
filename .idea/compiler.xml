@@ -9,10 +9,10 @@
         <module name="de.bund.zrb.natural.codeinsightbridge" />
         <module name="de.bund.zrb.natural.codeinsightbridge.feature" />
         <module name="de.bund.zrb.natural.codeinsightbridge.repository" />
-        <module name="natural-code-insight-bridge-target" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="natural-code-insight-bridge-target" target="1.5" />
       <module name="naturalone-ai-feature" target="1.5" />
       <module name="naturalone-ai-jaxb-wrapper" target="1.5" />
       <module name="naturalone-ai-plugin" target="1.5" />

@@ -4,25 +4,17 @@ Dieses Repo ist die Tycho-Version des Eclipse-Plugins **de.bund.zrb.natural.code
 
 ## Projektstruktur
 
-- `releng/target-platform` – Target-Definition (Eclipse + NaturalONE Abhängigkeiten)
+- `releng/target-platform` – Target-Definition (Eclipse Plattform)
 - `de.bund.zrb.natural.codeinsightbridge` – Eclipse-Plugin (OSGi Bundle)
 - `de.bund.zrb.natural.codeinsightbridge.feature` – Feature zum Installieren
 - `de.bund.zrb.natural.codeinsightbridge.repository` – p2 Update Site
 
-## 1) Target Platform anpassen (wichtig)
-
-In `releng/target-platform/natural-code-insight-bridge.target` musst du **dein** p2-Repo für NaturalONE eintragen:
-
-```xml
-<repository location="file:/CHANGE/ME/TO/NATURALONE/P2/REPO"/>
-```
-
-Dieses Repo muss die Bundles enthalten:
-- `com.softwareag.naturalone.natural.natstyle` (>= 8.4.1)
-- `com.softwareag.naturalone.natural.parser` (>= 8.4.1)
+## 1) Target Platform
 
 Die Eclipse-Basis kommt standardmäßig aus `https://download.eclipse.org/releases/latest`.
-Wenn du eine feste Eclipse-Version willst, ändere das entsprechend.
+Wenn du eine feste Eclipse-Version willst, ändere das in:
+
+`releng/target-platform/natural-code-insight-bridge.target`
 
 ## 2) Build
 
@@ -34,9 +26,9 @@ mvn clean verify
 
 Ergebnis: `de.bund.zrb.natural.codeinsightbridge.repository/target/repository`
 
-## 3) Installation in Eclipse / NaturalONE
+## 3) Installation in Eclipse
 
-In Eclipse/NaturalONE:
+In Eclipse:
 - **Help → Install New Software...**
 - **Add... → Local...**
 - Ordner auswählen: `de.bund.zrb.natural.codeinsightbridge.repository/target/repository`
@@ -46,8 +38,4 @@ In Eclipse/NaturalONE:
 1. Repo als Maven-Projekt öffnen (Root `pom.xml`).
 2. JDK 8 konfigurieren.
 3. Code ändern und per `mvn clean verify` bauen.
-
-Hinweis: Das Starten einer Eclipse-Runtime direkt aus IntelliJ ist möglich, aber am stabilsten ist:
-- Build über Maven/Tycho
-- Installieren/Debuggen im Eclipse/NaturalONE IDE-Produkt
 
