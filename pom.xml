@@ -1,59 +1,57 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>de.miguel0888.naturalone</groupId>
-    <artifactId>naturalone-ai-extension</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <groupId>de.bund.zrb</groupId>
+    <artifactId>natural-code-insight-bridge</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <modules>
-        <module>naturalone-ai-plugin</module>
-        <module>naturalone-ai-jaxb-wrapper</module>
-        <module>naturalone-ai-feature</module>
-        <module>naturalone-ai-repository</module>
-        <module>naturalone-ai-target</module>
-    </modules>
-
     <properties>
-        <tycho.version>1.7.0</tycho.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>8</maven.compiler.release>
+        <tycho.version>4.0.6</tycho.version>
     </properties>
 
+    <modules>
+        <module>releng/target-platform</module>
+        <module>de.bund.zrb.natural.codeinsightbridge</module>
+        <module>de.bund.zrb.natural.codeinsightbridge.feature</module>
+        <module>de.bund.zrb.natural.codeinsightbridge.repository</module>
+    </modules>
+
     <build>
-        <plugins>
-            <plugin>
-                <groupId>org.eclipse.tycho</groupId>
-                <artifactId>tycho-maven-plugin</artifactId>
-                <version>${tycho.version}</version>
-                <extensions>true</extensions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.eclipse.tycho</groupId>
-                <artifactId>target-platform-configuration</artifactId>
-                <version>${tycho.version}</version>
-                <configuration>
-                    <target>
-                        <artifact>
-                            <groupId>de.miguel0888.naturalone</groupId>
-                            <artifactId>naturalone-ai-target</artifactId>
-                            <version>0.0.1-SNAPSHOT</version>
-                        </artifact>
-                    </target>
-
-                    <environments>
-                        <environment>
-                            <os>win32</os>
-                            <ws>win32</ws>
-                            <arch>x86_64</arch>
-                        </environment>
-                    </environments>
-                </configuration>
-
-            </plugin>
-
-
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.eclipse.tycho</groupId>
+                    <artifactId>tycho-maven-plugin</artifactId>
+                    <version>${tycho.version}</version>
+                    <extensions>true</extensions>
+                </plugin>
+                <plugin>
+                    <groupId>org.eclipse.tycho</groupId>
+                    <artifactId>tycho-compiler-plugin</artifactId>
+                    <version>${tycho.version}</version>
+                    <configuration>
+                        <useProjectSettings>true</useProjectSettings>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.eclipse.tycho</groupId>
+                    <artifactId>target-platform-configuration</artifactId>
+                    <version>${tycho.version}</version>
+                    <configuration>
+                        <target>
+                            <artifact>
+                                <groupId>de.bund.zrb</groupId>
+                                <artifactId>natural-code-insight-bridge-target</artifactId>
+                                <version>${project.version}</version>
+                            </artifact>
+                        </target>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

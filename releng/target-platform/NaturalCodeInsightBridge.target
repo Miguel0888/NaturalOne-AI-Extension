@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?pde version="3.8"?>
+<target name="NaturalCodeInsightBridge" sequenceNumber="1">
+  <locations>
+    <!--
+      Add the Eclipse Platform you build against.
+      Example (replace with your desired release):
+      <location includeAllPlatforms="false" includeMode="planner" includeSource="true" type="InstallableUnit">
+        <repository location="https://download.eclipse.org/releases/2024-12"/>
+        <unit id="org.eclipse.platform.ide" version="0.0.0"/>
+      </location>
+
+      Add your NaturalONE / Software AG update site or local p2 repository here.
+      For offline builds, point to a local folder containing p2 metadata:
+      <repository location="file:/path/to/naturalone/p2/"/>
+      <unit id="com.softwareag.naturalone.natural.parser" version="0.0.0"/>
+      <unit id="com.softwareag.naturalone.natural.natstyle" version="0.0.0"/>
+    -->
+  </locations>
+</target>

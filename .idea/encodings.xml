@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/de.bund.zrb.natural.codeinsightbridge.feature/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/de.bund.zrb.natural.codeinsightbridge.repository/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/de.bund.zrb.natural.codeinsightbridge/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/naturalone-ai-feature/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/naturalone-ai-feature/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/naturalone-ai-plugin/src/main/java" charset="UTF-8" />
@@ -9,5 +12,8 @@
     <file url="file://$PROJECT_DIR$/naturalone-ai-repository/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/naturalone-ai-target/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/naturalone-ai-target/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/releng/target-platform/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
   </component>
 </project>

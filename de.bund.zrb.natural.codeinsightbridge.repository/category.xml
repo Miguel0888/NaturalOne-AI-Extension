@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<site>
+   <description name="Natural Code Insight Bridge" url="">
+      Update site for Natural Code Insight Bridge.
+   </description>
+
+   <feature url="features/de.bund.zrb.natural.codeinsightbridge.feature_1.0.0.qualifier.jar" id="de.bund.zrb.natural.codeinsightbridge.feature" version="1.0.0.qualifier">
+      <category name="natural"/>
+   </feature>
+
+   <category-def name="natural" label="Natural Code Insight Bridge"/>
+</site>

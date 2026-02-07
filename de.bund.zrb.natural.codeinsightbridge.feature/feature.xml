@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="de.bund.zrb.natural.codeinsightbridge.feature"
+      label="Natural Code Insight Bridge"
+      version="1.0.0.qualifier"
+      provider-name="ZRB">
+
+   <description>
+      NaturalONE integration helpers.
+   </description>
+
+   <plugin
+         id="de.bund.zrb.natural.codeinsightbridge"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+</feature>
