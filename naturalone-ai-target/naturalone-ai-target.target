@@ -13,11 +13,16 @@
             <!-- Eclipse Release Train Neon -->
             <repository location="https://download.eclipse.org/releases/neon/201703231000/"/>
 
+            <repository location="https://download.eclipse.org/tools/orbit/downloads/drops/R20170307180635/repository"/>
+
             <!-- Eclipse IDE -->
             <unit id="org.eclipse.platform.ide" version="0.0.0"/>
 
             <!-- EMF (DAS FEHLT DIR) -->
             <unit id="org.eclipse.emf.sdk.feature.group" version="0.0.0"/>
+
+            <unit id="javax.xml.bind" version="0.0.0"/>
+            <unit id="javax.activation" version="0.0.0"/>
 
         </location>
     </locations>
