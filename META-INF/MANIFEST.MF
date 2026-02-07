@@ -1,5 +1,0 @@
-Manifest-Version: 1.0
-Bundle-ManifestVersion: 2
-Bundle-Name: natural-code-insight-bridge
-Bundle-SymbolicName: natural-code-insight-bridge
-Bundle-Version: 1.0.0.qualifier
