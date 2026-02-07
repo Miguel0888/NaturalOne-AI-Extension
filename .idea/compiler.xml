@@ -8,6 +8,7 @@
         <outputRelativeToContentRoot value="true" />
         <module name="naturalone-ai-plugin" />
         <module name="naturalone-ai-target" />
+        <module name="naturalone-ai-jaxb-wrapper" />
         <module name="naturalone-ai-feature" />
         <module name="naturalone-ai-repository" />
       </profile>

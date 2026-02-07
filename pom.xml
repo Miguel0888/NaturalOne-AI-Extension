@@ -10,6 +10,7 @@
 
     <modules>
         <module>naturalone-ai-plugin</module>
+        <module>naturalone-ai-jaxb-wrapper</module>
         <module>naturalone-ai-feature</module>
         <module>naturalone-ai-repository</module>
         <module>naturalone-ai-target</module>
