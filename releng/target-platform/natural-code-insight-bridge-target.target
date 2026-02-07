@@ -5,7 +5,7 @@
   <locations>
     <location type="InstallableUnit">
       <repository location="http://download.eclipse.org/releases/neon/"/>
-      <unit id="org.eclipse.platform.sdk" version="0.0.0"/>
+      <unit id="org.eclipse.platform.sdk" version="4.6.3"/>
     </location>
   </locations>
 
