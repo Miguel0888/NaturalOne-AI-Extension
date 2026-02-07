@@ -11,8 +11,12 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>8</maven.compiler.release>
+
+    <!-- Tycho -->
     <tycho.version>1.7.0</tycho.version>
+
+    <!-- Tycho 1.7: disable mirrors via property -->
+    <tycho.disableP2Mirrors>true</tycho.disableP2Mirrors>
   </properties>
 
   <modules>
@@ -23,12 +27,58 @@
 
   <build>
     <plugins>
+
+      <!-- Enable Tycho packaging types -->
       <plugin>
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-maven-plugin</artifactId>
         <version>${tycho.version}</version>
         <extensions>true</extensions>
       </plugin>
+
+      <!-- Define the target platform -->
+      <plugin>
+        <groupId>org.eclipse.tycho</groupId>
+        <artifactId>target-platform-configuration</artifactId>
+        <version>${tycho.version}</version>
+        <configuration>
+          <environments>
+            <environment>
+              <os>win32</os>
+              <ws>win32</ws>
+              <arch>x86_64</arch>
+            </environment>
+          </environments>
+
+          <resolver>p2</resolver>
+
+          <repositories>
+            <repository>
+              <id>eclipse-platform-neon-4.6.3-archive</id>
+              <layout>p2</layout>
+              <url>http://archive.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/</url>
+            </repository>
+            <repository>
+              <id>eclipse-release-neon-archive</id>
+              <layout>p2</layout>
+              <url>http://archive.eclipse.org/releases/neon/</url>
+            </repository>
+          </repositories>
+
+        </configuration>
+      </plugin>
+
+      <!-- Compile plugin code for Java 8 -->
+      <plugin>
+        <groupId>org.eclipse.tycho</groupId>
+        <artifactId>tycho-compiler-plugin</artifactId>
+        <version>${tycho.version}</version>
+        <configuration>
+          <source>1.8</source>
+          <target>1.8</target>
+        </configuration>
+      </plugin>
+
     </plugins>
   </build>
 
