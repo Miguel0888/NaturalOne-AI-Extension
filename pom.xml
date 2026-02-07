@@ -11,7 +11,6 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Optional Release 8 -->
     <maven.compiler.release>8</maven.compiler.release>
     <tycho.version>1.7.0</tycho.version>
   </properties>
@@ -24,60 +23,12 @@
 
   <build>
     <plugins>
-
-      <!-- Enable Tycho packaging types (eclipse-plugin, eclipse-feature, eclipse-repository) -->
       <plugin>
         <groupId>org.eclipse.tycho</groupId>
         <artifactId>tycho-maven-plugin</artifactId>
         <version>${tycho.version}</version>
         <extensions>true</extensions>
       </plugin>
-
-      <!-- Define the target platform (p2 repositories + environment) -->
-      <plugin>
-        <groupId>org.eclipse.tycho</groupId>
-        <artifactId>target-platform-configuration</artifactId>
-        <version>${tycho.version}</version>
-        <configuration>
-          <environments>
-            <environment>
-              <os>win32</os>
-              <ws>win32</ws>
-              <arch>x86_64</arch>
-            </environment>
-          </environments>
-
-          <resolver>p2</resolver>
-
-          <repositories>
-            <!-- Eclipse Platform Neon 4.6.3 -->
-            <repository>
-              <id>eclipse-platform-neon-4.6.3</id>
-              <layout>p2</layout>
-              <url>https://download.eclipse.org/eclipse/updates/4.6/R-4.6.3-201703010400/</url>
-            </repository>
-
-            <!-- Neon release train (optional but useful for extra bundles/features) -->
-            <repository>
-              <id>eclipse-release-neon</id>
-              <layout>p2</layout>
-              <url>https://download.eclipse.org/releases/neon/</url>
-            </repository>
-          </repositories>
-        </configuration>
-      </plugin>
-
-      <!-- Compile plugin code for Java 8 -->
-      <plugin>
-        <groupId>org.eclipse.tycho</groupId>
-        <artifactId>tycho-compiler-plugin</artifactId>
-        <version>${tycho.version}</version>
-        <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
-        </configuration>
-      </plugin>
-
     </plugins>
   </build>
 
