@@ -4,9 +4,9 @@ Bundle-Name: Natural Code Insight Bridge UI
 Bundle-SymbolicName: de.bund.zrb.natural.codeinsightbridge.ui;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-Vendor: de.bund.zrb
-Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
  org.eclipse.jface,
  org.eclipse.swt
 Bundle-ActivationPolicy: lazy
+Bundle-RequiredExecutionEnvironment: JavaSE-1.8
