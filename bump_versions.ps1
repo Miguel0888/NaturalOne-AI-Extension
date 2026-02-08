@@ -1,17 +1,32 @@
 # Update OSGi bundle and feature versions by setting a timestamp qualifier.
-# Run from repository root: powershell -ExecutionPolicy Bypass -File .\bump_versions.ps1
+# Run from repository root:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\bump_versions.ps1
 
 $ErrorActionPreference = "Stop"
 
 $timestamp = Get-Date -Format "yyyyMMddHHmmss"
 $qualifier = "v$timestamp"
 
-function Normalize-Path([string]$path) {
-    return $path -replace '\\','/'
+function Read-TextFileUtf8([string]$filePath) {
+    # Read text as UTF-8 (tolerate BOM).
+    return [System.IO.File]::ReadAllText($filePath, [System.Text.Encoding]::UTF8)
+}
+
+function Write-TextFileUtf8NoBom([string]$filePath, [string]$content) {
+    # Write text as UTF-8 without BOM.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($filePath, $content, $utf8NoBom)
+}
+
+function Is-GeneratedBuildOutput([string]$filePath) {
+    # Skip generated build output (e.g. Maven/Tycho target folders).
+    return $filePath -match "[\\/]target[\\/]"
 }
 
 function Update-Manifest([string]$filePath) {
-    $content = Get-Content -LiteralPath $filePath -Raw -Encoding UTF8
+    if (Is-GeneratedBuildOutput $filePath) { return $false }
+
+    $content = Read-TextFileUtf8 $filePath
 
     # Replace: Bundle-Version: X.Y.Z[.anything]  -> Bundle-Version: X.Y.Z.vYYYYMMDDHHmmss
     $updated = [regex]::Replace(
@@ -22,30 +37,36 @@ function Update-Manifest([string]$filePath) {
     )
 
     if ($updated -ne $content) {
-        Set-Content -LiteralPath $filePath -Value $updated -Encoding UTF8
+        Write-TextFileUtf8NoBom -filePath $filePath -content $updated
         Write-Host "Updated: $filePath"
         return $true
     }
+
     return $false
 }
 
 function Update-FeatureXml([string]$filePath) {
-    $content = Get-Content -LiteralPath $filePath -Raw -Encoding UTF8
+    if (Is-GeneratedBuildOutput $filePath) { return $false }
 
-    # Replace first occurrence of version="X.Y.Z[.anything]" (feature's own version)
-    $pattern = '(\bversion=")(\d+)\.(\d+)\.(\d+)(?:\.[A-Za-z0-9_-]+)?(")'
+    $content = Read-TextFileUtf8 $filePath
+
+    # Update only the <feature ... version="..."> attribute (do not touch nested <plugin> entries).
+    # Use Singleline matching because the <feature> start tag can span multiple lines.
+    $pattern = '(?s)(<feature\b[^>]*?\bversion=")(\d+)\.(\d+)\.(\d+)(?:\.[A-Za-z0-9_-]+)?(")'
+
     $updated = [regex]::Replace(
         $content,
         $pattern,
-        { param($m) "$($m.Groups[1].Value)$($m.Groups[2].Value).$($m.Groups[3].Value).$($m.Groups[4].Value).$qualifier$($m.Groups[6].Value)" },
+        { param($m) "$($m.Groups[1].Value)$($m.Groups[2].Value).$($m.Groups[3].Value).$($m.Groups[4].Value).$qualifier$($m.Groups[5].Value)" },
         1
     )
 
     if ($updated -ne $content) {
-        Set-Content -LiteralPath $filePath -Value $updated -Encoding UTF8
+        Write-TextFileUtf8NoBom -filePath $filePath -content $updated
         Write-Host "Updated: $filePath"
         return $true
     }
+
     return $false
 }
 
