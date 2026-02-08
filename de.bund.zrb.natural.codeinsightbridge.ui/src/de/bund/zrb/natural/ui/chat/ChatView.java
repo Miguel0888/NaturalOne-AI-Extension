@@ -1063,7 +1063,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
         String s = text;
         s = s.replace("\\", "\\\\");
-        s = s.replace("\"", "\\"");
+        s = s.replace("\"", "\\\"");
         s = s.replace("'", "\\'");
         s = s.replace("\r", "");
         return s;
