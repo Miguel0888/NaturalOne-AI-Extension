@@ -260,6 +260,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private Composite createAttachmentsBar(Composite parent) {
         Composite bar = new Composite(parent, SWT.NONE);
+        this.attachmentsBar = bar;
         GridLayout layout = new GridLayout(2, false);
         layout.marginWidth = 8;
         layout.marginHeight = 6;
@@ -596,13 +597,26 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         attachmentChips.layout(true, true);
-        attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 
-        GridData data = (GridData) attachmentsBar.getLayoutData();
-        if (data != null) {
-            data.heightHint = attachments.isEmpty() ? 0 : 42;
+        if (attachmentsScroll != null && !attachmentsScroll.isDisposed()) {
+            attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
         }
-        attachmentsBar.getParent().layout(true, true);
+
+        if (attachmentsBar == null || attachmentsBar.isDisposed()) {
+            return;
+        }
+
+        Object layoutData = attachmentsBar.getLayoutData();
+        if (layoutData instanceof GridData) {
+            ((GridData) layoutData).heightHint = attachments.isEmpty() ? 0 : 42;
+        }
+
+        org.eclipse.swt.widgets.Composite parent = attachmentsBar.getParent();
+        if (parent != null && !parent.isDisposed()) {
+            parent.layout(true, true);
+        } else {
+            attachmentsBar.layout(true, true);
+        }
     }
 
     private void createAttachmentChip(Composite parent, final FileAttachment a, final int index) {
@@ -1354,5 +1368,5 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
     }
 
-    
+
 }
