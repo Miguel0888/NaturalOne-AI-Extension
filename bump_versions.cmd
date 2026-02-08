@@ -1,32 +1,22 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions
 
-REM Create timestamp qualifier vYYYYMMDDHHMMSS using PowerShell
-for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set TS=%%i
-set QUAL=v%TS%
+REM Run from repository root (folder that contains this file)
+pushd "%~dp0" >nul
 
-echo Qualifier set to: %QUAL%
-echo.
+REM Prefer PowerShell 7 (pwsh) if installed, otherwise Windows PowerShell (powershell)
+set "PS_EXE=powershell"
+where pwsh >nul 2>nul && set "PS_EXE=pwsh"
 
-REM Update all MANIFEST.MF
-for /r %%f in (MANIFEST.MF) do (
-  powershell -NoProfile -Command ^
-    "$p='%%f';" ^
-    "$c=Get-Content -LiteralPath $p -Raw -Encoding UTF8;" ^
-    "$u=[regex]::Replace($c,'^(Bundle-Version:\s*)(\d+)\.(\d+)\.(\d+)(?:\.[A-Za-z0-9_-]+)?\s*$',"`$1`$2.`$3.`$4.%QUAL%",[System.Text.RegularExpressions.RegexOptions]::Multiline);" ^
-    "if($u -ne $c){Set-Content -LiteralPath $p -Value $u -Encoding UTF8; Write-Host ('Updated: ' + $p)}"
+if not exist "%~dp0bump_versions.ps1" (
+  echo ERROR: "%~dp0bump_versions.ps1" not found.
+  echo        Expected it next to this .cmd.
+  popd >nul
+  exit /b 2
 )
 
-REM Update all feature.xml (first version="..." only)
-for /r %%f in (feature.xml) do (
-  powershell -NoProfile -Command ^
-    "$p='%%f';" ^
-    "$c=Get-Content -LiteralPath $p -Raw -Encoding UTF8;" ^
-    "$pat='(\bversion=\"")(\d+)\.(\d+)\.(\d+)(?:\.[A-Za-z0-9_-]+)?(\"")';" ^
-    "$u=[regex]::Replace($c,$pat,('`$1`$2.`$3.`$4.%QUAL%`$6'),1);" ^
-    "if($u -ne $c){Set-Content -LiteralPath $p -Value $u -Encoding UTF8; Write-Host ('Updated: ' + $p)}"
-)
+%PS_EXE% -NoProfile -ExecutionPolicy Bypass -File "%~dp0bump_versions.ps1"
+set "RC=%ERRORLEVEL%"
 
-echo.
-echo Done.
-endlocal
+popd >nul
+endlocal & exit /b %RC%
