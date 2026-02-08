@@ -26,7 +26,7 @@ public final class DummyChatPresenter implements ChatPresenter {
         this.markdown = markdown;
         this.userMessages = new ArrayList<String>();
         this.generationId = new AtomicLong(0L);
-        this.selectedModelId = "assistai";
+        this.selectedModelId = "custom";
     }
 
     @Override
@@ -74,7 +74,7 @@ public final class DummyChatPresenter implements ChatPresenter {
         generationId.incrementAndGet();
         userMessages.clear();
         view.clearChatView();
-        view.showNotification("Conversation cleared.", Duration.ofSeconds(2), ChatViewPort.NotificationType.INFO);
+        view.showNotification("New chat started.", Duration.ofSeconds(2), ChatViewPort.NotificationType.INFO);
     }
 
     @Override

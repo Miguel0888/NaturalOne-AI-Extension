@@ -1,8 +1,9 @@
 package de.bund.zrb.natural.ui.chat;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,10 +14,11 @@ import org.eclipse.jface.fieldassist.ContentProposalAdapter;
 import org.eclipse.jface.fieldassist.IContentProposal;
 import org.eclipse.jface.fieldassist.IContentProposalProvider;
 import org.eclipse.jface.fieldassist.TextContentAdapter;
+import org.eclipse.jface.util.IPropertyChangeListener;
+import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
-import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.TextTransfer;
@@ -27,15 +29,12 @@ import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Color;
-import org.eclipse.swt.graphics.GC;
-import org.eclipse.swt.graphics.Image;
-import org.eclipse.swt.graphics.ImageData;
-import org.eclipse.swt.graphics.Point;
-import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.layout.RowLayout;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
@@ -48,22 +47,25 @@ import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.ui.themes.ITheme;
+import org.eclipse.ui.themes.IThemeManager;
 
 import de.bund.zrb.natural.ui.chat.internal.BundleResourceReader;
 import de.bund.zrb.natural.ui.chat.internal.ChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.ChatViewPort;
 import de.bund.zrb.natural.ui.chat.internal.DummyChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.EmbeddedFontCssBuilder;
-import de.bund.zrb.natural.ui.chat.internal.MiniMarkdownParser;
 import de.bund.zrb.natural.ui.chat.internal.FallbackUiResources;
-
+import de.bund.zrb.natural.ui.chat.internal.MiniMarkdownParser;
 
 /**
- * Provide an AssistAI-like chat UI (click dummy) without any real backend.
+ * Provide a Copilot-like chat UI (click dummy) without any real backend.
  */
 public final class ChatView extends ViewPart implements ChatViewPort {
 
     public static final String VIEW_ID = "de.bund.zrb.natural.codeinsightbridge.ui.chatView";
+
+    private static final DateTimeFormatter HISTORY_TITLE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final BundleResourceReader resourceReader;
     private final EmbeddedFontCssBuilder fontCssBuilder;
@@ -71,104 +73,96 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private final ChatPresenter presenter;
 
     private Browser browser;
+
     private Text inputArea;
 
-    private ScrolledComposite scrolledComposite;
-    private Composite imagesContainer;
+    private Combo modeCombo;
+    private Combo providerCombo;
 
-    private ToolBar actionToolBar;
-    private ToolItem modelDropdownItem;
-    private Menu modelMenu;
+    private Composite root;
+    private Composite promptContainer;
+    private Composite attachmentsBar;
+    private ScrolledComposite attachmentsScroll;
+    private Composite attachmentChips;
+
+    private ToolItem resendItem;
+    private ToolItem historyItem;
+    private Menu historyMenu;
 
     private boolean autoScrollEnabled;
     private int notificationIdCounter;
 
     private final Map<String, String> autocompleteModel;
-    private final List<ImageAttachment> attachments;
 
-    private final List<ModelOption> models;
-    private String selectedModelId;
+    private final List<FileAttachment> attachments;
+    private final List<ModelOption> providers;
 
-    private final Map<String, Image> iconCache;
+    private final ChatHistory chatHistory;
+
+    private boolean darkTheme;
+
+    private Color uiBackground;
+    private Color uiForeground;
+    private Color uiBorder;
+    private Color inputBackground;
+
+    private IPropertyChangeListener themeListener;
 
     public ChatView() {
         this.resourceReader = new BundleResourceReader(ChatView.class);
         this.fontCssBuilder = new EmbeddedFontCssBuilder(resourceReader);
         this.markdown = new MiniMarkdownParser();
         this.presenter = new DummyChatPresenter(this, markdown);
-        this.autocompleteModel = new LinkedHashMap<String, String>();
-        this.attachments = new ArrayList<ImageAttachment>();
-        this.models = createDefaultModels();
-        this.selectedModelId = "assistai";
+
         this.autoScrollEnabled = true;
         this.notificationIdCounter = 0;
-        this.iconCache = new LinkedHashMap<String, Image>();
 
-        // Provide a few dummy slash commands for the autocomplete UI.
+        this.autocompleteModel = new LinkedHashMap<String, String>();
         this.autocompleteModel.put("help", "Show available dummy commands");
-        this.autocompleteModel.put("clear", "Clear the conversation");
-        this.autocompleteModel.put("model", "Show model selector hint");
+        this.autocompleteModel.put("new", "Start a new chat session");
+        this.autocompleteModel.put("history", "Show chat history menu");
+
+        this.attachments = new ArrayList<FileAttachment>();
+        this.providers = createDefaultProviders();
+        this.chatHistory = new ChatHistory();
+        this.darkTheme = true;
     }
 
     @Override
     public void createPartControl(Composite parent) {
-        SashForm sashForm = new SashForm(parent, SWT.VERTICAL);
-        sashForm.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+        this.root = new Composite(parent, SWT.NONE);
+        GridLayout rootLayout = new GridLayout(1, false);
+        rootLayout.marginWidth = 0;
+        rootLayout.marginHeight = 0;
+        root.setLayout(rootLayout);
 
-        Composite browserContainer = new Composite(sashForm, SWT.NONE);
+        Composite header = createConversationHeader(root);
+        header.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+        Composite browserContainer = new Composite(root, SWT.NONE);
         browserContainer.setLayout(new FillLayout());
+        browserContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
         browser = new Browser(browserContainer, SWT.NONE);
+        this.darkTheme = detectDarkTheme();
         initializeFunctions(browser);
         initializeChatView(browser);
 
-        Composite controls = new Composite(sashForm, SWT.NONE);
-        GridLayout controlsLayout = new GridLayout(1, false);
-        controlsLayout.marginWidth = 5;
-        controlsLayout.marginHeight = 5;
-        controls.setLayout(controlsLayout);
+        attachmentsBar = createAttachmentsBar(root);
+        GridData attachmentsData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        attachmentsData.heightHint = 0;
+        attachmentsBar.setLayoutData(attachmentsData);
 
-        Composite attachmentsPanel = createAttachmentsPanel(controls);
-        attachmentsPanel.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
+        promptContainer = createPromptContainer(root);
+        GridData promptData = new GridData(SWT.FILL, SWT.BOTTOM, true, false);
+        promptData.heightHint = 160;
+        promptContainer.setLayoutData(promptData);
 
-        Composite inputContainer = new Composite(controls, SWT.NONE);
-        GridLayout inputLayout = new GridLayout(1, false);
-        inputLayout.marginWidth = 0;
-        inputLayout.marginHeight = 0;
-        inputLayout.horizontalSpacing = 5;
-        inputContainer.setLayout(inputLayout);
-        inputContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+        applyAutoTheme();
+        registerThemeListener();
 
-        inputArea = createUserInput(inputContainer);
-        inputArea.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-        setupAutocomplete(inputArea);
-
-        Composite buttonBar = new Composite(controls, SWT.NONE);
-        GridLayout buttonBarLayout = new GridLayout(1, false);
-        buttonBarLayout.marginHeight = 0;
-        buttonBarLayout.marginWidth = 0;
-        buttonBar.setLayout(buttonBarLayout);
-        buttonBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-
-        actionToolBar = new ToolBar(buttonBar, SWT.FLAT | SWT.RIGHT);
-        actionToolBar.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, true, false));
-
-        modelDropdownItem = createModelSelector(actionToolBar);
-        createAttachmentToolItem(actionToolBar);
-        createReplayToolItem(actionToolBar);
-        createClearChatToolItem(actionToolBar);
-        createStopToolItem(actionToolBar);
-        createSendToolItem(actionToolBar);
-
-        sashForm.setWeights(new int[]{70, 30});
-
-        // Build model menu and select the default model.
-        setAvailableModels(models, selectedModelId);
-        clearAttachments();
-
-        String welcomeId = "welcome-message";
-        appendMessage(welcomeId, "assistant");
-        setMessageHtml(welcomeId, "Welcome! This is an AssistAI-like UI dummy.\n\nType something and press Ctrl+Enter.");
+        chatHistory.ensureActiveSessionExists();
+        showWelcome();
     }
 
     @Override
@@ -179,6 +173,655 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         presenter.onViewVisible();
     }
 
+    @Override
+    public void dispose() {
+        unregisterThemeListener();
+        disposeColors();
+        super.dispose();
+    }
+
+    private Composite createConversationHeader(Composite parent) {
+        Composite header = new Composite(parent, SWT.NONE);
+        GridLayout layout = new GridLayout(2, false);
+        layout.marginWidth = 8;
+        layout.marginHeight = 6;
+        layout.horizontalSpacing = 8;
+        header.setLayout(layout);
+
+        Label title = new Label(header, SWT.NONE);
+        title.setText("Chat");
+        title.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false));
+
+        ToolBar toolbar = new ToolBar(header, SWT.FLAT | SWT.RIGHT);
+        toolbar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false));
+
+        historyItem = new ToolItem(toolbar, SWT.DROP_DOWN);
+        historyItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJS_INFO_TSK));
+        historyItem.setToolTipText("History");
+
+        historyMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+        historyItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                rebuildHistoryMenu();
+                historyMenu.setVisible(true);
+            }
+        });
+
+        ToolItem newChatItem = new ToolItem(toolbar, SWT.PUSH);
+        newChatItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_ADD));
+        newChatItem.setToolTipText("New chat");
+        newChatItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                startNewChat();
+            }
+        });
+
+        resendItem = new ToolItem(toolbar, SWT.PUSH);
+        resendItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_REDO));
+        resendItem.setToolTipText("Resend / regenerate");
+        resendItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                presenter.onReplayLastMessage();
+            }
+        });
+
+        ToolItem toolsItem = new ToolItem(toolbar, SWT.DROP_DOWN);
+        toolsItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_SYNCED));
+        toolsItem.setToolTipText("Tools");
+        final Menu toolsMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+        addToolMenuItem(toolsMenu, "Explain selection", true);
+        addToolMenuItem(toolsMenu, "Generate tests", true);
+        addToolMenuItem(toolsMenu, "Refactor", true);
+        addToolMenuItem(toolsMenu, "Configure tools...", true);
+        toolsItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                toolsMenu.setVisible(true);
+            }
+        });
+
+        return header;
+    }
+
+    private void addToolMenuItem(Menu menu, String label, boolean enabled) {
+        MenuItem item = new MenuItem(menu, SWT.PUSH);
+        item.setText(label);
+        item.setEnabled(enabled);
+        item.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                showNotification("Tool is a dummy action in this plugin.", Duration.ofSeconds(2), NotificationType.INFO);
+            }
+        });
+    }
+
+    private Composite createAttachmentsBar(Composite parent) {
+        Composite bar = new Composite(parent, SWT.NONE);
+        GridLayout layout = new GridLayout(2, false);
+        layout.marginWidth = 8;
+        layout.marginHeight = 6;
+        layout.horizontalSpacing = 8;
+        bar.setLayout(layout);
+
+        ToolBar left = new ToolBar(bar, SWT.FLAT);
+        left.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false));
+
+        ToolItem attach = new ToolItem(left, SWT.PUSH);
+        attach.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE));
+        attach.setToolTipText("Attach files");
+        attach.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                openFileDialogAndAttach();
+            }
+        });
+
+        attachmentsScroll = new ScrolledComposite(bar, SWT.H_SCROLL | SWT.V_SCROLL);
+        attachmentsScroll.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        attachmentsScroll.setExpandHorizontal(true);
+        attachmentsScroll.setExpandVertical(true);
+
+        attachmentChips = new Composite(attachmentsScroll, SWT.NONE);
+        RowLayout row = new RowLayout(SWT.HORIZONTAL);
+        row.spacing = 8;
+        row.marginTop = 2;
+        row.marginBottom = 2;
+        row.marginLeft = 2;
+        row.marginRight = 2;
+        row.wrap = true;
+        attachmentChips.setLayout(row);
+
+        attachmentsScroll.setContent(attachmentChips);
+        attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+
+        renderAttachments();
+
+        return bar;
+    }
+
+    private Composite createPromptContainer(Composite parent) {
+        Composite prompt = new Composite(parent, SWT.NONE);
+        GridLayout layout = new GridLayout(1, false);
+        layout.marginWidth = 8;
+        layout.marginHeight = 8;
+        layout.verticalSpacing = 6;
+        prompt.setLayout(layout);
+
+        inputArea = createUserInput(prompt);
+        GridData inputData = new GridData(SWT.FILL, SWT.FILL, true, true);
+        inputData.heightHint = 110;
+        inputArea.setLayoutData(inputData);
+
+        Composite bottomBar = new Composite(prompt, SWT.NONE);
+        GridLayout barLayout = new GridLayout(3, false);
+        barLayout.marginWidth = 0;
+        barLayout.marginHeight = 0;
+        barLayout.horizontalSpacing = 8;
+        bottomBar.setLayout(barLayout);
+        bottomBar.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+        Composite left = new Composite(bottomBar, SWT.NONE);
+        GridLayout leftLayout = new GridLayout(2, false);
+        leftLayout.marginWidth = 0;
+        leftLayout.marginHeight = 0;
+        leftLayout.horizontalSpacing = 8;
+        left.setLayout(leftLayout);
+        left.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false));
+
+        modeCombo = new Combo(left, SWT.DROP_DOWN | SWT.READ_ONLY);
+        modeCombo.setItems(new String[]{"Ask", "Edit", "Agent", "Plan"});
+        modeCombo.select(0);
+
+        providerCombo = new Combo(left, SWT.DROP_DOWN | SWT.READ_ONLY);
+        providerCombo.setItems(toProviderLabels(providers));
+        providerCombo.select(0);
+        providerCombo.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                int idx = providerCombo.getSelectionIndex();
+                if (idx >= 0 && idx < providers.size()) {
+                    presenter.onChatModelSelected(providers.get(idx).id);
+                }
+            }
+        });
+
+        Label spacer = new Label(bottomBar, SWT.NONE);
+        spacer.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+
+        ToolBar actions = new ToolBar(bottomBar, SWT.FLAT | SWT.RIGHT);
+        actions.setLayoutData(new GridData(SWT.END, SWT.CENTER, false, false));
+
+        ToolItem stop = new ToolItem(actions, SWT.PUSH);
+        stop.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_STOP));
+        stop.setToolTipText("Cancel");
+        stop.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                presenter.onStop();
+            }
+        });
+
+        ToolItem send = new ToolItem(actions, SWT.PUSH);
+        send.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD));
+        send.setToolTipText("Send (Enter)");
+        send.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                sendIfNotEmpty();
+            }
+        });
+
+        setupAutocomplete(inputArea);
+
+        return prompt;
+    }
+
+    private Text createUserInput(Composite parent) {
+        Text t = new Text(parent, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
+        t.setMessage("Type a message... (Enter to send, Shift+Enter for a new line)");
+        t.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.keyCode == SWT.CR && (e.stateMask & SWT.SHIFT) == 0) {
+                    e.doit = false;
+                    sendIfNotEmpty();
+                }
+            }
+        });
+        return t;
+    }
+
+    private void setupAutocomplete(Text text) {
+        IContentProposalProvider provider = new IContentProposalProvider() {
+            @Override
+            public IContentProposal[] getProposals(String contents, int position) {
+                if (contents == null) {
+                    return new IContentProposal[0];
+                }
+                int slash = contents.lastIndexOf('/');
+                if (slash < 0) {
+                    return new IContentProposal[0];
+                }
+                String prefix = contents.substring(slash + 1).trim();
+                List<IContentProposal> proposals = new ArrayList<IContentProposal>();
+                for (final Map.Entry<String, String> entry : autocompleteModel.entrySet()) {
+                    if (prefix.isEmpty() || entry.getKey().startsWith(prefix)) {
+                        proposals.add(new IContentProposal() {
+                            @Override
+                            public String getContent() {
+                                return "/" + entry.getKey() + " ";
+                            }
+
+                            @Override
+                            public int getCursorPosition() {
+                                return getContent().length();
+                            }
+
+                            @Override
+                            public String getDescription() {
+                                return entry.getValue();
+                            }
+
+                            @Override
+                            public String getLabel() {
+                                return "/" + entry.getKey();
+                            }
+                        });
+                    }
+                }
+                return proposals.toArray(new IContentProposal[0]);
+            }
+        };
+
+        ContentProposalAdapter adapter = new ContentProposalAdapter(text, new TextContentAdapter(), provider, null, null);
+        adapter.setProposalAcceptanceStyle(ContentProposalAdapter.PROPOSAL_REPLACE);
+    }
+
+    private void sendIfNotEmpty() {
+        if (inputArea == null || inputArea.isDisposed()) {
+            return;
+        }
+        String text = inputArea.getText();
+        if (text == null) {
+            return;
+        }
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        if (trimmed.startsWith("/")) {
+            handleSlashCommand(trimmed);
+            return;
+        }
+
+        // Include some UI state in the dummy message to keep the demo interesting.
+        String decorated = decorateWithContext(trimmed);
+
+        presenter.onSendUserMessage(decorated);
+    }
+
+    private String decorateWithContext(String trimmed) {
+        String mode = modeCombo == null ? "Ask" : modeCombo.getText();
+        String provider = providerCombo == null ? "Custom" : providerCombo.getText();
+        StringBuilder sb = new StringBuilder();
+        sb.append("[").append(mode).append(" | ").append(provider).append("] ");
+        sb.append(trimmed);
+
+        if (!attachments.isEmpty()) {
+            sb.append("\n\nAttached files:");
+            for (FileAttachment a : attachments) {
+                sb.append("\n- ").append(a.displayName);
+            }
+        }
+        return sb.toString();
+    }
+
+    private void handleSlashCommand(String trimmed) {
+        String cmd = trimmed.substring(1).trim();
+
+        if ("help".equalsIgnoreCase(cmd)) {
+            String msg = "Available dummy commands:\n\n- /help\n- /new\n- /history";
+            String id = UUID.randomUUID().toString();
+            appendMessage(id, "assistant");
+            setMessageHtml(id, msg);
+            clearUserInput();
+            return;
+        }
+
+        if ("new".equalsIgnoreCase(cmd)) {
+            startNewChat();
+            clearUserInput();
+            return;
+        }
+
+        if ("history".equalsIgnoreCase(cmd)) {
+            rebuildHistoryMenu();
+            historyMenu.setVisible(true);
+            clearUserInput();
+            return;
+        }
+
+        showNotification("Unknown command: " + trimmed, Duration.ofSeconds(4), NotificationType.WARNING);
+        clearUserInput();
+    }
+
+    private void startNewChat() {
+        chatHistory.archiveActiveSession();
+        chatHistory.ensureActiveSessionExists();
+
+        clearAttachments();
+        presenter.onClear();
+    }
+
+    private void rebuildHistoryMenu() {
+        for (MenuItem item : historyMenu.getItems()) {
+            item.dispose();
+        }
+
+        List<ChatSession> sessions = new ArrayList<ChatSession>(chatHistory.getArchivedSessions());
+        Collections.reverse(sessions);
+
+        if (sessions.isEmpty()) {
+            MenuItem empty = new MenuItem(historyMenu, SWT.PUSH);
+            empty.setText("(No previous chats)");
+            empty.setEnabled(false);
+            return;
+        }
+
+        for (final ChatSession session : sessions) {
+            MenuItem it = new MenuItem(historyMenu, SWT.PUSH);
+            it.setText(session.title);
+            it.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    loadSession(session);
+                }
+            });
+        }
+    }
+
+    private void loadSession(ChatSession session) {
+        if (session == null) {
+            return;
+        }
+        chatHistory.activate(session);
+        clearChatView();
+        clearAttachments();
+
+        for (RenderedMessage m : session.messages) {
+            appendMessage(m.messageId, m.role);
+            setMessageHtml(m.messageId, m.htmlOrMarkdown);
+        }
+
+        showNotification("Loaded chat: " + session.title, Duration.ofSeconds(2), NotificationType.INFO);
+    }
+
+    private void clearAttachments() {
+        attachments.clear();
+        renderAttachments();
+    }
+
+    private void openFileDialogAndAttach() {
+        FileDialog dialog = new FileDialog(getSite().getShell(), SWT.MULTI);
+        dialog.setText("Select files");
+        dialog.setFilterExtensions(new String[]{"*.*"});
+        String first = dialog.open();
+        if (first == null) {
+            return;
+        }
+        String dir = dialog.getFilterPath();
+        String[] names = dialog.getFileNames();
+        for (String name : names) {
+            String path = dir + System.getProperty("file.separator") + name;
+            attachments.add(new FileAttachment(path, name));
+        }
+        renderAttachments();
+    }
+
+    private void renderAttachments() {
+        if (attachmentChips == null || attachmentChips.isDisposed()) {
+            return;
+        }
+
+        for (org.eclipse.swt.widgets.Control child : attachmentChips.getChildren()) {
+            child.dispose();
+        }
+
+        for (int i = 0; i < attachments.size(); i++) {
+            FileAttachment a = attachments.get(i);
+            createAttachmentChip(attachmentChips, a, i);
+        }
+
+        attachmentChips.layout(true, true);
+        attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+
+        GridData data = (GridData) attachmentsBar.getLayoutData();
+        if (data != null) {
+            data.heightHint = attachments.isEmpty() ? 0 : 42;
+        }
+        attachmentsBar.getParent().layout(true, true);
+    }
+
+    private void createAttachmentChip(Composite parent, final FileAttachment a, final int index) {
+        Composite chip = new Composite(parent, SWT.BORDER);
+        GridLayout layout = new GridLayout(2, false);
+        layout.marginWidth = 6;
+        layout.marginHeight = 2;
+        layout.horizontalSpacing = 6;
+        chip.setLayout(layout);
+
+        Label name = new Label(chip, SWT.NONE);
+        name.setText(a.displayName);
+
+        Label remove = new Label(chip, SWT.NONE);
+        remove.setText("✕");
+        remove.setToolTipText("Remove");
+        remove.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseUp(MouseEvent e) {
+                if (index >= 0 && index < attachments.size()) {
+                    attachments.remove(index);
+                    renderAttachments();
+                }
+            }
+        });
+
+        applyThemeToChip(chip, name, remove);
+    }
+
+    private void showWelcome() {
+        String welcomeId = "welcome-message";
+        appendMessage(welcomeId, "assistant");
+        setMessageHtml(welcomeId,
+                "Welcome! This is a Copilot-like UI dummy.\n\n"
+                        + "Enter sends, Shift+Enter adds a line break.\n"
+                        + "Use the mode/provider dropdowns and attach files to see how the UI behaves.");
+    }
+
+    private void applyAutoTheme() {
+        this.darkTheme = detectDarkTheme();
+        createOrUpdateColors(darkTheme);
+        applyThemeToSwt();
+        applyThemeToBrowser();
+    }
+
+    private boolean detectDarkTheme() {
+        String themeId = "";
+        try {
+            IThemeManager tm = PlatformUI.getWorkbench().getThemeManager();
+            ITheme current = tm.getCurrentTheme();
+            if (current != null && current.getId() != null) {
+                themeId = current.getId();
+            }
+        } catch (Exception ex) {
+            // Ignore and fall back to luminance detection.
+        }
+
+        if (themeId.toLowerCase().contains("dark")) {
+            return true;
+        }
+
+        RGB bg = Display.getDefault().getSystemColor(SWT.COLOR_WIDGET_BACKGROUND).getRGB();
+        int luminance = (int) (0.2126 * bg.red + 0.7152 * bg.green + 0.0722 * bg.blue);
+        return luminance < 128;
+    }
+
+    private void registerThemeListener() {
+        if (themeListener != null) {
+            return;
+        }
+        themeListener = new IPropertyChangeListener() {
+            @Override
+            public void propertyChange(PropertyChangeEvent event) {
+                applyAutoTheme();
+            }
+        };
+        try {
+            PlatformUI.getWorkbench().getThemeManager().addPropertyChangeListener(themeListener);
+        } catch (Exception ex) {
+            // Ignore when running without workbench.
+        }
+    }
+
+    private void unregisterThemeListener() {
+        if (themeListener == null) {
+            return;
+        }
+        try {
+            PlatformUI.getWorkbench().getThemeManager().removePropertyChangeListener(themeListener);
+        } catch (Exception ex) {
+            // Ignore
+        }
+        themeListener = null;
+    }
+
+    private void createOrUpdateColors(boolean dark) {
+        disposeColors();
+
+        Display d = Display.getDefault();
+        if (dark) {
+            uiBackground = new Color(d, 30, 30, 30);
+            uiForeground = new Color(d, 230, 230, 230);
+            uiBorder = new Color(d, 70, 70, 70);
+            inputBackground = new Color(d, 35, 35, 35);
+        } else {
+            uiBackground = new Color(d, 250, 250, 250);
+            uiForeground = new Color(d, 25, 25, 25);
+            uiBorder = new Color(d, 200, 200, 200);
+            inputBackground = new Color(d, 255, 255, 255);
+        }
+    }
+
+    private void disposeColors() {
+        disposeColor(uiBackground);
+        disposeColor(uiForeground);
+        disposeColor(uiBorder);
+        disposeColor(inputBackground);
+        uiBackground = null;
+        uiForeground = null;
+        uiBorder = null;
+        inputBackground = null;
+    }
+
+    private void disposeColor(Color c) {
+        if (c != null && !c.isDisposed()) {
+            c.dispose();
+        }
+    }
+
+    private void applyThemeToSwt() {
+        if (root == null || root.isDisposed()) {
+            return;
+        }
+
+        applyRecursive(root);
+
+        if (inputArea != null && !inputArea.isDisposed()) {
+            inputArea.setBackground(inputBackground);
+            inputArea.setForeground(uiForeground);
+        }
+
+        if (modeCombo != null && !modeCombo.isDisposed()) {
+            modeCombo.setBackground(inputBackground);
+            modeCombo.setForeground(uiForeground);
+        }
+        if (providerCombo != null && !providerCombo.isDisposed()) {
+            providerCombo.setBackground(inputBackground);
+            providerCombo.setForeground(uiForeground);
+        }
+
+        renderAttachments();
+    }
+
+    private void applyRecursive(Composite c) {
+        c.setBackground(uiBackground);
+        for (org.eclipse.swt.widgets.Control child : c.getChildren()) {
+            child.setBackground(uiBackground);
+            child.setForeground(uiForeground);
+            if (child instanceof Composite) {
+                applyRecursive((Composite) child);
+            }
+        }
+    }
+
+    private void applyThemeToChip(Composite chip, Label name, Label remove) {
+        if (chip == null || chip.isDisposed()) {
+            return;
+        }
+        chip.setBackground(inputBackground);
+        name.setBackground(inputBackground);
+        name.setForeground(uiForeground);
+        remove.setBackground(inputBackground);
+        remove.setForeground(uiForeground);
+    }
+
+    private void applyThemeToBrowser() {
+        if (browser == null || browser.isDisposed()) {
+            return;
+        }
+
+        String css = buildBrowserThemeCss(darkTheme);
+        String escaped = escapeForJsStringLiteral(css);
+        String js = "var style = document.getElementById('theme-css');"
+                + "if(style){ style.innerHTML = '" + escaped + "'; }";
+
+        browser.execute(js);
+    }
+
+    private String buildBrowserThemeCss(boolean dark) {
+        if (dark) {
+            return "body{background-color:#1e1e1e;color:#f0f0f0;}"
+                    + ".chat-bubble.me{background-color:#2d333b;}"
+                    + ".chat-bubble.you{background-color:#1e1e1e;}";
+        }
+        return "body{background-color:#ffffff;color:#111111;}"
+                + ".chat-bubble{border-bottom:1px solid rgba(0,0,0,0.08);}"
+                + ".chat-bubble.me{background-color:#f3f3f3;}"
+                + ".chat-bubble.you{background-color:#ffffff;}"
+                + "code{background-color:rgba(0,0,0,0.08);}";
+    }
+
+    private static String[] toProviderLabels(List<ModelOption> providers) {
+        String[] arr = new String[providers.size()];
+        for (int i = 0; i < providers.size(); i++) {
+            arr[i] = providers.get(i).displayName;
+        }
+        return arr;
+    }
+
+    private static List<ModelOption> createDefaultProviders() {
+        List<ModelOption> list = new ArrayList<ModelOption>();
+        list.add(new ModelOption("custom", "Custom", null));
+        list.add(new ModelOption("openai", "ChatGPT", null));
+        list.add(new ModelOption("anthropic", "Claude", null));
+        list.add(new ModelOption("google", "Gemini", null));
+        list.add(new ModelOption("grok", "Grok", null));
+        list.add(new ModelOption("deepseek", "DeepSeek", null));
+        return list;
+    }
 
     private void initializeFunctions(Browser b) {
         new CopyCodeFunction(b, "eclipseFunc");
@@ -196,7 +839,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         String js = loadJavaScripts();
         String fonts = fontCssBuilder.buildCss();
 
-
         String banner = "";
         boolean missingCoreAssets = css.indexOf("/*MISSING:textview.css*/") >= 0 || js.indexOf("/*MISSING:textview.js*/") >= 0;
         if (missingCoreAssets) {
@@ -207,13 +849,13 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             );
         }
 
-
         String html = "<!DOCTYPE html>"
                 + "<html>"
                 + "<head>"
                 + "<meta charset=\"utf-8\"/>"
                 + "<style>" + css + "</style>"
                 + "<style>" + fonts + "</style>"
+                + "<style id=\"theme-css\"></style>"
                 + "<script>" + js + "</script>"
                 + "</head>"
                 + "<body>"
@@ -223,42 +865,40 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 + "</body>"
                 + "</html>";
 
-
         b.setText(html);
     }
 
     private String loadCss() {
-        String[] cssFiles = new String[]{"textview.css", "dark.min.css", "fa6.all.min.css", "katex.min.css"};
+        List<String> cssFiles = new ArrayList<String>();
+        cssFiles.add("textview.css");
+        if (darkTheme) {
+            cssFiles.add("dark.min.css");
+        }
+        cssFiles.add("fa6.all.min.css");
+        cssFiles.add("katex.min.css");
         StringBuilder sb = new StringBuilder();
-
 
         for (String f : cssFiles) {
             String path = "css/" + f;
             String content = resourceReader.readUtf8OrEmpty(path);
             if (content.isEmpty() && "textview.css".equals(f)) {
-                // Mark missing core asset so we can show a banner.
                 sb.append("/*MISSING:textview.css*/\n");
                 sb.append(FallbackUiResources.minimalCss()).append("\n");
             } else {
                 sb.append(content).append("\n");
             }
         }
-
-
         return sb.toString();
     }
-
 
     private String loadJavaScripts() {
         String[] jsFiles = new String[]{"highlight.min.js", "textview.js", "katex.min.js"};
         StringBuilder sb = new StringBuilder();
 
-
         for (String f : jsFiles) {
             String path = "js/" + f;
             String content = resourceReader.readUtf8OrEmpty(path);
             if (content.isEmpty() && "textview.js".equals(f)) {
-            // Mark missing core asset so we can show a banner.
                 sb.append("/*MISSING:textview.js*/\n");
                 sb.append(FallbackUiResources.minimalJs()).append("\n\n");
             } else {
@@ -266,392 +906,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             }
         }
 
-
-        // Ensure required functions exist even when some scripts are missing.
         sb.append("\n\n").append(FallbackUiResources.minimalJs());
-
-
         return sb.toString();
-    }
-
-    private Composite createAttachmentsPanel(Composite parent) {
-        Composite attachmentsPanel = new Composite(parent, SWT.NONE);
-        attachmentsPanel.setLayout(new GridLayout(1, false));
-
-        scrolledComposite = new ScrolledComposite(attachmentsPanel, SWT.H_SCROLL | SWT.V_SCROLL);
-        GridData scrolledData = new GridData(SWT.FILL, SWT.FILL, true, false);
-        scrolledData.heightHint = 0;
-        scrolledComposite.setLayoutData(scrolledData);
-        scrolledComposite.setExpandHorizontal(true);
-        scrolledComposite.setExpandVertical(true);
-
-        imagesContainer = new Composite(scrolledComposite, SWT.NONE);
-        RowLayout rowLayout = new RowLayout(SWT.HORIZONTAL);
-        rowLayout.spacing = 8;
-        rowLayout.marginTop = 4;
-        rowLayout.marginBottom = 4;
-        rowLayout.marginLeft = 4;
-        rowLayout.marginRight = 4;
-        rowLayout.wrap = true;
-        imagesContainer.setLayout(rowLayout);
-
-        scrolledComposite.setContent(imagesContainer);
-        scrolledComposite.setMinSize(imagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT));
-
-        imagesContainer.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.keyCode == SWT.DEL || e.keyCode == SWT.BS) {
-                    removeSelectedAttachments();
-                }
-            }
-        });
-
-        return attachmentsPanel;
-    }
-
-    private void removeSelectedAttachments() {
-        List<Integer> indices = new ArrayList<Integer>();
-        for (org.eclipse.swt.widgets.Control child : imagesContainer.getChildren()) {
-            if (child instanceof Label) {
-                Boolean selected = (Boolean) child.getData("selected");
-                if (selected != null && selected.booleanValue()) {
-                    Integer idx = (Integer) child.getData("attachmentIndex");
-                    if (idx != null) {
-                        indices.add(idx);
-                    }
-                }
-            }
-        }
-
-        Collections.sort(indices, Collections.reverseOrder());
-        for (Integer idx : indices) {
-            if (idx.intValue() >= 0 && idx.intValue() < attachments.size()) {
-                attachments.remove(idx.intValue());
-            }
-        }
-        renderAttachments();
-    }
-
-    private ToolItem createAttachmentToolItem(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-        Image attachIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_ADD);
-        item.setImage(attachIcon);
-        item.setToolTipText("Add image attachment");
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                openImageDialogAndAttach();
-            }
-        });
-        return item;
-    }
-
-    private void openImageDialogAndAttach() {
-        FileDialog dialog = new FileDialog(getSite().getShell(), SWT.MULTI);
-        dialog.setText("Select images");
-        dialog.setFilterExtensions(new String[]{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"});
-        String first = dialog.open();
-        if (first == null) {
-            return;
-        }
-        String dir = dialog.getFilterPath();
-        String[] names = dialog.getFileNames();
-        for (String name : names) {
-            String path = dir + System.getProperty("file.separator") + name;
-            try {
-                ImageData img = new ImageData(path);
-                attachments.add(new ImageAttachment(img, name));
-            } catch (Exception ex) {
-                showNotification("Cannot load image: " + name, Duration.ofSeconds(4), NotificationType.ERROR);
-            }
-        }
-        renderAttachments();
-    }
-
-    private ToolItem createSendToolItem(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-        Image sendIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD);
-        item.setImage(sendIcon);
-        item.setToolTipText("Send message (Ctrl+Enter)");
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                sendIfNotEmpty();
-            }
-        });
-        return item;
-    }
-
-    private ToolItem createReplayToolItem(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-        Image replayIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_REDO);
-        item.setImage(replayIcon);
-        item.setToolTipText("Regenerate response");
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                presenter.onReplayLastMessage();
-            }
-        });
-        return item;
-    }
-
-    private ToolItem createClearChatToolItem(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-        Image clearIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ETOOL_CLEAR);
-        item.setImage(clearIcon);
-        item.setToolTipText("Clear conversation");
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                presenter.onClear();
-                clearAttachments();
-            }
-        });
-        return item;
-    }
-
-    private ToolItem createStopToolItem(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.PUSH);
-        Image stopIcon = PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_STOP);
-        item.setImage(stopIcon);
-        item.setToolTipText("Stop generation");
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                presenter.onStop();
-            }
-        });
-        return item;
-    }
-
-    private ToolItem createModelSelector(ToolBar toolbar) {
-        ToolItem item = new ToolItem(toolbar, SWT.DROP_DOWN);
-        item.setImage(loadIcon("assistai-16.png"));
-        item.setText("AssistAI");
-        item.setToolTipText("Select AI Model");
-        return item;
-    }
-
-    private Text createUserInput(Composite parent) {
-        Text t = new Text(parent, SWT.BORDER | SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
-        t.setMessage("Type a message or question here... (Press Ctrl+Enter to send)");
-        t.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.keyCode == SWT.CR && (e.stateMask & SWT.CTRL) != 0) {
-                    e.doit = false;
-                    sendIfNotEmpty();
-                }
-            }
-        });
-        return t;
-    }
-
-    private void sendIfNotEmpty() {
-        String text = inputArea.getText();
-        if (text == null) {
-            return;
-        }
-        String trimmed = text.trim();
-        if (trimmed.isEmpty()) {
-            return;
-        }
-        if (trimmed.startsWith("/")) {
-            handleSlashCommand(trimmed);
-            return;
-        }
-        presenter.onSendUserMessage(trimmed);
-    }
-
-    private void handleSlashCommand(String trimmed) {
-        String cmd = trimmed.substring(1).trim();
-        if ("clear".equalsIgnoreCase(cmd)) {
-            presenter.onClear();
-            clearAttachments();
-            clearUserInput();
-            return;
-        }
-        if ("help".equalsIgnoreCase(cmd)) {
-            String msg = "Available dummy commands:\n\n" + "- /help\n" + "- /clear\n" + "- /model";
-            String id = UUID.randomUUID().toString();
-            appendMessage(id, "assistant");
-            setMessageHtml(id, msg);
-            clearUserInput();
-            return;
-        }
-        if ("model".equalsIgnoreCase(cmd)) {
-            showNotification("Use the dropdown next to the send button to select a model.", Duration.ofSeconds(4), NotificationType.INFO);
-            clearUserInput();
-            return;
-        }
-        showNotification("Unknown command: " + trimmed, Duration.ofSeconds(4), NotificationType.WARNING);
-        clearUserInput();
-    }
-
-    private void setupAutocomplete(Text textField) {
-        IContentProposalProvider provider = new IContentProposalProvider() {
-            @Override
-            public IContentProposal[] getProposals(String contents, int position) {
-                if (contents == null || !contents.startsWith("/")) {
-                    return new IContentProposal[0];
-                }
-                String prefix = contents.substring(1);
-                List<String> matches = new ArrayList<String>();
-                for (String key : autocompleteModel.keySet()) {
-                    if (key.startsWith(prefix)) {
-                        matches.add(key);
-                    }
-                }
-                IContentProposal[] proposals = new IContentProposal[matches.size()];
-                for (int i = 0; i < matches.size(); i++) {
-                    proposals[i] = new SimpleCommandProposal(matches.get(i), autocompleteModel.get(matches.get(i)));
-                }
-                return proposals;
-            }
-        };
-
-        ContentProposalAdapter adapter = new ContentProposalAdapter(textField, new TextContentAdapter(), provider, null, null);
-        adapter.setProposalAcceptanceStyle(ContentProposalAdapter.PROPOSAL_REPLACE);
-    }
-
-    private void setAvailableModels(final List<ModelOption> availableModels, final String selectedId) {
-        selectedModelId = selectedId;
-        ModelOption selected = null;
-        for (ModelOption m : availableModels) {
-            if (m.id.equals(selectedId)) {
-                selected = m;
-                break;
-            }
-        }
-        if (selected == null && !availableModels.isEmpty()) {
-            selected = availableModels.get(0);
-        }
-        if (selected != null) {
-            modelDropdownItem.setText(selected.displayName);
-            modelDropdownItem.setImage(loadIcon(selected.iconFile));
-            updateLayout(actionToolBar);
-        }
-
-        if (modelMenu != null && !modelMenu.isDisposed()) {
-            modelMenu.dispose();
-        }
-        modelMenu = new Menu(actionToolBar.getShell(), SWT.POP_UP);
-
-        modelDropdownItem.addListener(SWT.Selection, event -> {
-            if (event.detail == SWT.ARROW) {
-                for (MenuItem item : modelMenu.getItems()) {
-                    item.dispose();
-                }
-                for (final ModelOption m : availableModels) {
-                    MenuItem mi = new MenuItem(modelMenu, SWT.CHECK);
-                    mi.setText(m.displayName);
-                    mi.setSelection(m.id.equals(selectedModelId));
-                    mi.addSelectionListener(new SelectionAdapter() {
-                        @Override
-                        public void widgetSelected(SelectionEvent e) {
-                            selectModel(m);
-                        }
-                    });
-                }
-                Rectangle rect = modelDropdownItem.getBounds();
-                Point pt = new Point(rect.x, rect.y + rect.height);
-                pt = actionToolBar.toDisplay(pt);
-                modelMenu.setLocation(pt.x, pt.y);
-                modelMenu.setVisible(true);
-            }
-        });
-    }
-
-    private void selectModel(ModelOption m) {
-        if (m == null) {
-            return;
-        }
-        this.selectedModelId = m.id;
-        modelDropdownItem.setText(m.displayName);
-        modelDropdownItem.setImage(loadIcon(m.iconFile));
-        updateLayout(actionToolBar);
-        presenter.onChatModelSelected(m.id);
-    }
-
-    private void clearAttachments() {
-        attachments.clear();
-        renderAttachments();
-    }
-
-    private void renderAttachments() {
-        if (imagesContainer == null || imagesContainer.isDisposed()) {
-            return;
-        }
-
-        for (org.eclipse.swt.widgets.Control child : imagesContainer.getChildren()) {
-            child.dispose();
-        }
-
-        if (attachments.isEmpty()) {
-            scrolledComposite.setVisible(false);
-            ((GridData) scrolledComposite.getLayoutData()).heightHint = 0;
-            updateLayout(imagesContainer);
-            return;
-        }
-
-        AttachmentRenderer renderer = new AttachmentRenderer();
-        for (ImageAttachment a : attachments) {
-            renderer.add(a.image, a.caption);
-        }
-
-        scrolledComposite.setVisible(true);
-
-        int thumbnailSize = 96;
-        int spacing = 8;
-        int margin = 8;
-        int maxHeight = (thumbnailSize + spacing) * 2 + margin;
-
-        Point size = imagesContainer.computeSize(SWT.DEFAULT, SWT.DEFAULT);
-        imagesContainer.setSize(size);
-        scrolledComposite.setMinSize(size);
-        ((GridData) scrolledComposite.getLayoutData()).heightHint = Math.min(size.y + margin, maxHeight);
-
-        updateLayout(imagesContainer);
-    }
-
-    private static List<ModelOption> createDefaultModels() {
-        return Arrays.asList(
-                new ModelOption("assistai", "AssistAI", "assistai-16.png"),
-                new ModelOption("openai", "ChatGPT", "chatgpt-icon-16.png"),
-                new ModelOption("anthropic", "Claude", "claude-ai-icon-16.png"),
-                new ModelOption("google", "Gemini", "google-gemini-icon-16.png"),
-                new ModelOption("grok", "Grok", "grok-icon-16.png"),
-                new ModelOption("deepseek", "DeepSeek", "deepseek-logo-icon-16.png")
-        );
-    }
-
-    private Image loadIcon(String iconFileName) {
-        if (iconFileName == null) {
-            return null;
-        }
-        Image cached = iconCache.get(iconFileName);
-        if (cached != null && !cached.isDisposed()) {
-            return cached;
-        }
-        try {
-            Image img = org.eclipse.jface.resource.ImageDescriptor.createFromFile(ChatView.class, "/icons/" + iconFileName).createImage();
-            iconCache.put(iconFileName, img);
-            return img;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static void updateLayout(Composite composite) {
-        if (composite == null || composite.isDisposed()) {
-            return;
-        }
-        composite.layout();
-        if (composite.getParent() != null) {
-            updateLayout(composite.getParent());
-        }
     }
 
     // --- ChatViewPort
@@ -664,7 +920,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 if (browser == null || browser.isDisposed()) {
                     return;
                 }
+                chatHistory.clearActiveSessionMessages();
                 initializeChatView(browser);
+                applyThemeToBrowser();
             }
         });
     }
@@ -685,6 +943,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     @Override
     public void appendMessage(final String messageId, final String role) {
         final String cssClass = "user".equals(role) ? "chat-bubble me" : "chat-bubble you";
+        chatHistory.appendMessageToActiveSession(messageId, role);
+
         Display.getDefault().asyncExec(new Runnable() {
             @Override
             public void run() {
@@ -716,6 +976,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     @Override
     public void setMessageHtml(final String messageId, final String htmlOrMarkdown) {
+        chatHistory.setMessageHtmlInActiveSession(messageId, htmlOrMarkdown);
+
         Display.getDefault().asyncExec(new Runnable() {
             @Override
             public void run() {
@@ -740,6 +1002,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     @Override
     public void removeMessage(final String messageId) {
+        chatHistory.removeMessageFromActiveSession(messageId);
+
         Display.getDefault().asyncExec(new Runnable() {
             @Override
             public void run() {
@@ -767,16 +1031,16 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
                 if (type == NotificationType.ERROR) {
                     icon = "fa-solid fa-circle-xmark";
-                    bg = "#ffdddd";
-                    fg = "#7a0000";
+                    bg = darkTheme ? "#522" : "#ffdddd";
+                    fg = darkTheme ? "#fff" : "#7a0000";
                 } else if (type == NotificationType.WARNING) {
                     icon = "fa-solid fa-triangle-exclamation";
-                    bg = "#fff4cc";
-                    fg = "#6b4e00";
+                    bg = darkTheme ? "#544400" : "#fff4cc";
+                    fg = darkTheme ? "#fff" : "#6b4e00";
                 } else {
                     icon = "fa-solid fa-circle-info";
-                    bg = "#ddf1ff";
-                    fg = "#004b7a";
+                    bg = darkTheme ? "#0b3a56" : "#ddf1ff";
+                    fg = darkTheme ? "#fff" : "#004b7a";
                 }
 
                 String safeMsg = escapeForJs(message);
@@ -799,7 +1063,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
         String s = text;
         s = s.replace("\\", "\\\\");
-        s = s.replace("\"", "\\\"");
+        s = s.replace("\"", "\\"");
         s = s.replace("'", "\\'");
         s = s.replace("\r", "");
         return s;
@@ -818,7 +1082,136 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         return s;
     }
 
-    // --- Browser Functions
+    private static final class FileAttachment {
+        private final String path;
+        private final String displayName;
+
+        private FileAttachment(String path, String displayName) {
+            this.path = path;
+            this.displayName = displayName;
+        }
+    }
+
+    private static final class ModelOption {
+        private final String id;
+        private final String displayName;
+        @SuppressWarnings("unused")
+        private final String iconFile;
+
+        private ModelOption(String id, String displayName, String iconFile) {
+            this.id = id;
+            this.displayName = displayName;
+            this.iconFile = iconFile;
+        }
+    }
+
+    private static final class RenderedMessage {
+        private final String messageId;
+        private final String role;
+        private String htmlOrMarkdown;
+
+        private RenderedMessage(String messageId, String role) {
+            this.messageId = messageId;
+            this.role = role;
+        }
+    }
+
+    private static final class ChatSession {
+        private final String id;
+        private final String title;
+        private final List<RenderedMessage> messages;
+
+        private ChatSession(String id, String title) {
+            this.id = id;
+            this.title = title;
+            this.messages = new ArrayList<RenderedMessage>();
+        }
+    }
+
+    private static final class ChatHistory {
+        private ChatSession active;
+        private final List<ChatSession> archived;
+
+        private ChatHistory() {
+            this.archived = new ArrayList<ChatSession>();
+        }
+
+        private void ensureActiveSessionExists() {
+            if (active != null) {
+                return;
+            }
+            active = newSession();
+        }
+
+        private void archiveActiveSession() {
+            if (active == null) {
+                active = newSession();
+                return;
+            }
+            if (!active.messages.isEmpty()) {
+                archived.add(active);
+            }
+            active = newSession();
+        }
+
+        private void activate(ChatSession session) {
+            if (session == null) {
+                return;
+            }
+            this.active = session;
+            this.archived.remove(session);
+        }
+
+        private ChatSession newSession() {
+            String id = UUID.randomUUID().toString();
+            String title = "Chat " + HISTORY_TITLE_FORMAT.format(LocalDateTime.now());
+            return new ChatSession(id, title);
+        }
+
+        private List<ChatSession> getArchivedSessions() {
+            return archived;
+        }
+
+        private void clearActiveSessionMessages() {
+            if (active != null) {
+                active.messages.clear();
+            }
+        }
+
+        private void appendMessageToActiveSession(String messageId, String role) {
+            ensureActiveSessionExists();
+            active.messages.add(new RenderedMessage(messageId, role));
+        }
+
+        private void setMessageHtmlInActiveSession(String messageId, String htmlOrMarkdown) {
+            ensureActiveSessionExists();
+            RenderedMessage m = find(active.messages, messageId);
+            if (m != null) {
+                m.htmlOrMarkdown = htmlOrMarkdown;
+            }
+        }
+
+        private void removeMessageFromActiveSession(String messageId) {
+            ensureActiveSessionExists();
+            RenderedMessage m = find(active.messages, messageId);
+            if (m != null) {
+                active.messages.remove(m);
+            }
+        }
+
+        private RenderedMessage find(List<RenderedMessage> messages, String messageId) {
+            for (RenderedMessage m : messages) {
+                if (m.messageId.equals(messageId)) {
+                    return m;
+                }
+            }
+            return null;
+        }
+    }
+
+// --- Browser Functions
+
+
 
     private final class CopyCodeFunction extends BrowserFunction {
         private CopyCodeFunction(Browser browser, String name) {
@@ -961,148 +1354,5 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
     }
 
-    private static final class ImageAttachment {
-        private final ImageData image;
-        private final String caption;
-
-        private ImageAttachment(ImageData image, String caption) {
-            this.image = image;
-            this.caption = caption;
-        }
-    }
-
-    private static final class ModelOption {
-        private final String id;
-        private final String displayName;
-        private final String iconFile;
-
-        private ModelOption(String id, String displayName, String iconFile) {
-            this.id = id;
-            this.displayName = displayName;
-            this.iconFile = iconFile;
-        }
-    }
-
-    private final class AttachmentRenderer {
-        private static final int THUMBNAIL_SIZE = 96;
-        private static final int BORDER_WIDTH = 2;
-
-        private void add(final ImageData preview, final String caption) {
-            final Display display = Display.getCurrent();
-            final Image normal = createThumbnailWithBorder(preview, display, false);
-            final Image selected = createThumbnailWithBorder(preview, display, true);
-            final boolean[] isSelected = new boolean[]{false};
-
-            final Label imageLabel = new Label(imagesContainer, SWT.NONE);
-            imageLabel.setImage(normal);
-
-            int attachmentIndex = imagesContainer.getChildren().length - 1;
-            imageLabel.setData("attachmentIndex", Integer.valueOf(attachmentIndex));
-            imageLabel.setData("selected", Boolean.FALSE);
-            imageLabel.setData("normalImage", normal);
-            imageLabel.setData("selectedImage", selected);
-
-            if (caption != null) {
-                imageLabel.setToolTipText(caption);
-            }
-
-            imageLabel.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseUp(MouseEvent e) {
-                    boolean ctrlPressed = (e.stateMask & SWT.CTRL) != 0;
-                    if (!ctrlPressed) {
-                        for (org.eclipse.swt.widgets.Control child : imagesContainer.getChildren()) {
-                            if (child instanceof Label && child != imageLabel) {
-                                Boolean wasSelected = (Boolean) child.getData("selected");
-                                if (wasSelected != null && wasSelected.booleanValue()) {
-                                    child.setData("selected", Boolean.FALSE);
-                                    ((Label) child).setImage((Image) child.getData("normalImage"));
-                                }
-                            }
-                        }
-                    }
-
-                    isSelected[0] = !isSelected[0];
-                    imageLabel.setData("selected", Boolean.valueOf(isSelected[0]));
-                    imageLabel.setImage(isSelected[0] ? selected : normal);
-                    imagesContainer.setFocus();
-                }
-            });
-
-            imageLabel.addDisposeListener(e -> {
-                if (normal != null && !normal.isDisposed()) {
-                    normal.dispose();
-                }
-                if (selected != null && !selected.isDisposed()) {
-                    selected.dispose();
-                }
-            });
-        }
-
-        private Image createThumbnailWithBorder(ImageData sourceData, Display display, boolean selected) {
-            int borderWidth = selected ? 3 : BORDER_WIDTH;
-            Color borderColor = selected ? new Color(display, 0, 120, 215) : new Color(display, 128, 128, 128);
-            Color bgColor = imagesContainer.getBackground();
-
-            Image result = new Image(display, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-            GC gc = new GC(result);
-            try {
-                gc.setAntialias(SWT.ON);
-                gc.setInterpolation(SWT.HIGH);
-                gc.setAdvanced(true);
-
-                gc.setBackground(bgColor);
-                gc.fillRectangle(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-
-                gc.setBackground(borderColor);
-                gc.fillRectangle(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-
-                int innerSize = THUMBNAIL_SIZE - borderWidth * 2;
-
-                if (sourceData != null) {
-                    int srcWidth = sourceData.width;
-                    int srcHeight = sourceData.height;
-                    int cropSize = Math.min(srcWidth, srcHeight);
-                    int cropX = (srcWidth - cropSize) / 2;
-                    int cropY = (srcHeight - cropSize) / 2;
-
-                    Image sourceImage = new Image(display, sourceData);
-                    try {
-                        gc.drawImage(sourceImage, cropX, cropY, cropSize, cropSize, borderWidth, borderWidth, innerSize, innerSize);
-                    } finally {
-                        sourceImage.dispose();
-                    }
-                } else {
-                    Color fillColor = new Color(display, 60, 60, 60);
-                    try {
-                        gc.setBackground(fillColor);
-                        gc.fillRectangle(borderWidth, borderWidth, innerSize, innerSize);
-                    } finally {
-                        fillColor.dispose();
-                    }
-                }
-            } finally {
-                gc.dispose();
-                borderColor.dispose();
-            }
-
-            return result;
-        }
-    }
-
-    // --- Cleanup
-
-    @Override
-    public void dispose() {
-        if (modelMenu != null && !modelMenu.isDisposed()) {
-            modelMenu.dispose();
-        }
-        for (Image img : iconCache.values()) {
-            if (img != null && !img.isDisposed()) {
-                img.dispose();
-            }
-        }
-        iconCache.clear();
-        super.dispose();
-    }
+    
 }
