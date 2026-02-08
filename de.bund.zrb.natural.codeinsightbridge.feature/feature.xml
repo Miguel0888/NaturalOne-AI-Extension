@@ -2,7 +2,7 @@
 <feature
       id="de.bund.zrb.natural.codeinsightbridge.feature"
       label="Natural Code Insight Bridge"
-      version="1.0.0.v20260208221554"
+      version="1.0.0.qualifier"
       provider-name="ZRB">
 
    <description>
