@@ -74,6 +74,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     public static final String VIEW_ID = "de.bund.zrb.natural.codeinsightbridge.ui.chatView";
 
     private static final DateTimeFormatter HISTORY_TITLE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final int MAX_ARCHIVED_SESSIONS = 20;
+
     private static final String PREF_THEME_MODE = "chat.ui.themeMode";
     private static final String PREF_CHAT_MODE = "chat.ui.mode";
     private static final String PREF_CHAT_PROVIDER_ID = "chat.ui.providerId";
@@ -715,7 +717,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         List<ChatSession> sessions = new ArrayList<ChatSession>(chatHistory.getArchivedSessions());
-        Collections.reverse(sessions);
+        Collections.reverse(sessions); // newest first
 
         if (sessions.isEmpty()) {
             MenuItem empty = new MenuItem(historyMenu, SWT.PUSH);
@@ -726,7 +728,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         for (final ChatSession session : sessions) {
             MenuItem it = new MenuItem(historyMenu, SWT.PUSH);
-            it.setText(session.title);
+            boolean isActive = chatHistory.isActive(session);
+            it.setText(formatHistoryEntry(session, isActive));
             it.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -734,6 +737,16 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 }
             });
         }
+    }
+
+    private String formatHistoryEntry(ChatSession session, boolean isActive) {
+        if (session == null) {
+            return "";
+        }
+        String title = session.getDisplayTitle();
+        String ts = HISTORY_TITLE_FORMAT.format(session.createdAt);
+        String prefix = isActive ? "• " : "";
+        return prefix + title + "  (" + ts + ")";
     }
 
     private void loadSession(ChatSession session) {
@@ -749,6 +762,25 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         renderSnapshot(snapshot);
 
         showNotification("Loaded chat: " + session.title, Duration.ofSeconds(2), NotificationType.INFO);
+    }
+
+    private static String deriveTitleFromFirstUserMessage(List<RenderedMessage> messages) {
+        if (messages == null) {
+            return "New chat";
+        }
+        for (RenderedMessage m : messages) {
+            if (m != null && "user".equals(m.role) && m.htmlOrMarkdown != null) {
+                String t = m.htmlOrMarkdown.trim();
+                if (!t.isEmpty()) {
+                    t = t.replace('\n', ' ').replace('\r', ' ').trim();
+                    if (t.length() > 40) {
+                        t = t.substring(0, 40).trim() + "…";
+                    }
+                    return t;
+                }
+            }
+        }
+        return "New chat";
     }
 
     private void resetBrowserPresentationOnly() {
@@ -1509,12 +1541,23 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private static final class ChatSession {
         private final String id;
         private final String title;
+        private final LocalDateTime createdAt;
         private final List<RenderedMessage> messages;
 
-        private ChatSession(String id, String title) {
+        private ChatSession(String id, String title, LocalDateTime createdAt) {
             this.id = id;
             this.title = title;
+            this.createdAt = createdAt == null ? LocalDateTime.now() : createdAt;
             this.messages = new ArrayList<RenderedMessage>();
+        }
+
+        private String getDisplayTitle() {
+            String base = (title == null || title.trim().isEmpty()) ? "New chat" : title.trim();
+            if (!"New chat".equals(base) && !base.startsWith("Chat ")) {
+                return base;
+            }
+            String derived = deriveTitleFromFirstUserMessage(messages);
+            return (derived == null || derived.trim().isEmpty()) ? "New chat" : derived;
         }
     }
 
@@ -1541,6 +1584,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             if (!active.messages.isEmpty()) {
                 if (!archived.contains(active)) {
                     archived.add(active);
+                    // Enforce FIFO size limit
+                    while (archived.size() > MAX_ARCHIVED_SESSIONS) {
+                        archived.remove(0);
+                    }
                 }
             }
             active = newSession();
@@ -1553,10 +1600,15 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             this.active = session;
         }
 
+        private boolean isActive(ChatSession session) {
+            return session != null && active != null && session.id.equals(active.id);
+        }
+
         private ChatSession newSession() {
             String id = UUID.randomUUID().toString();
-            String title = "Chat " + HISTORY_TITLE_FORMAT.format(LocalDateTime.now());
-            return new ChatSession(id, title);
+            LocalDateTime now = LocalDateTime.now();
+            String title = "New chat";
+            return new ChatSession(id, title, now);
         }
 
         private List<ChatSession> getArchivedSessions() {
