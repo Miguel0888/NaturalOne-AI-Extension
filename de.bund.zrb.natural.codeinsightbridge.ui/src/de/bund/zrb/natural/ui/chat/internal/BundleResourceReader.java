@@ -10,59 +10,111 @@ import java.nio.charset.Charset;
  */
 public final class BundleResourceReader {
 
-    private final Class<?> anchorClass;
+    private final Bundle bundle;
+    private final ILog log;
 
-    public BundleResourceReader(Class<?> anchorClass) {
-        this.anchorClass = anchorClass;
+    public BundleResourceReader(Bundle bundle) {
+        this.bundle = Objects.requireNonNull(bundle, "bundle must not be null");
+        this.log = Platform.getLog(this.bundle);
     }
 
+    /**
+     * Read a UTF-8 resource from the bundle.
+     * Throw an exception when the resource cannot be found or read.
+     */
     public String readUtf8(String path) {
-        return readString(path, Charset.forName("UTF-8"));
-    }
-
-    public String readString(String path, Charset charset) {
         byte[] bytes = readBytes(path);
-        return new String(bytes, charset);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    public byte[] readBytes(String path) {
-        InputStream in = null;
+    /**
+     * Read a UTF-8 resource from the bundle.
+     * Return the fallback when the resource cannot be found or read.
+     */
+    public String readUtf8OrFallback(String path, String fallback) {
         try {
-            in = open(path);
-            return readAllBytes(in);
-        } catch (IOException e) {
-            throw new IllegalStateException("Fail reading resource: " + path, e);
-        } finally {
-            closeQuietly(in);
+            return readUtf8(path);
+        } catch (RuntimeException ex) {
+            logMissingResource(path, ex);
+            return fallback;
         }
     }
 
-    private InputStream open(String path) {
+    /**
+     * Read a UTF-8 resource from the bundle.
+     * Return an empty string when the resource cannot be found or read.
+     */
+    public String readUtf8OrEmpty(String path) {
+        return readUtf8OrFallback(path, "");
+    }
+
+    /**
+     * Read a binary resource from the bundle.
+     * Throw an exception when the resource cannot be found or read.
+     */
+    public byte[] readBytes(String path) {
+        try (InputStream in = open(path)) {
+            return toByteArray(in);
+        } catch (IOException ex) {
+            throw new IllegalStateException(buildReadFailedMessage(path), ex);
+        }
+    }
+
+    /**
+     * Open a resource stream from the bundle.
+     * Throw an exception when the resource cannot be found.
+     */
+    public InputStream open(String path) throws IOException {
+        URL url = findResourceUrl(path);
+        if (url == null) {
+            throw new IllegalStateException(buildNotFoundMessage(path));
+        }
+        return url.openStream();
+    }
+
+    private URL findResourceUrl(String path) throws IOException {
         String normalized = normalize(path);
-        InputStream in = anchorClass.getResourceAsStream(normalized);
-        if (in == null) {
-            in = anchorClass.getClassLoader().getResourceAsStream(stripLeadingSlash(normalized));
+        // Try direct bundle entry lookup first.
+        URL url = bundle.getEntry(normalized);
+        if (url != null) {
+            return url;
         }
-        if (in == null) {
-            throw new IllegalStateException("Resource not found: " + path);
+        // Some callers accidentally pass a leading slash.
+        url = bundle.getEntry("/" + normalized);
+        if (url != null) {
+            return url;
         }
-        return in;
+
+        // Use FileLocator to resolve resources from JARs and fragments.
+        url = FileLocator.find(bundle, new Path(normalized), null);
+        if (url != null) {
+            return url;
+        }
+
+        // Try again with a leading slash for completeness.
+        url = FileLocator.find(bundle, new Path("/" + normalized), null);
+        if (url != null) {
+            return url;
+        }
+        return null;
     }
 
-    private static String normalize(String path) {
-        if (path == null) {
-            return "/";
+    private String normalize(String path) {
+        String p = Objects.requireNonNull(path, "path must not be null").trim();
+        p = p.replace('\\', '/');
+
+        // Remove leading slash to make bundle lookups consistent.
+        while (p.startsWith("/")) {
+            p = p.substring(1);
         }
-        return path.startsWith("/") ? path : "/" + path;
+        return p;
     }
 
-    private static String stripLeadingSlash(String path) {
-        return path.startsWith("/") ? path.substring(1) : path;
-    }
+    private byte[] toByteArray(InputStream in) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(8 * 1024);
+        byte[] buffer = new byte[8 * 1024];
 
-    private static byte[] readAllBytes(InputStream in) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[8192];
+        // Read fully into memory to keep API simple.
         int read;
         while ((read = in.read(buffer)) >= 0) {
             out.write(buffer, 0, read);
@@ -70,14 +122,17 @@ public final class BundleResourceReader {
         return out.toByteArray();
     }
 
-    private static void closeQuietly(InputStream in) {
-        if (in == null) {
-            return;
+    private void logMissingResource(String path, RuntimeException ex) {
+        String message = buildNotFoundMessage(path);
+        log.log(new Status(Status.WARNING, bundle.getSymbolicName(), message, ex));
         }
-        try {
-            in.close();
-        } catch (IOException ignored) {
-            // Ignore close failures
+    private String buildNotFoundMessage(String path) {
+        return "Resource not found: " + path
+                + " (bundle=" + bundle.getSymbolicName() + "). "
+                + "Ensure the resource is included in the built bundle (e.g. build.properties bin.includes: css/, js/, fonts/, icons/).";
         }
+    private String buildReadFailedMessage(String path) {
+        return "Failed to read resource: " + path
+                + " (bundle=" + bundle.getSymbolicName() + ").";
     }
 }
