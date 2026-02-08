@@ -227,15 +227,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private Composite createConversationHeader(Composite parent) {
         Composite header = new Composite(parent, SWT.NONE);
-        GridLayout layout = new GridLayout(2, false);
+        GridLayout layout = new GridLayout(1, false);
         layout.marginWidth = 8;
         layout.marginHeight = 6;
-        layout.horizontalSpacing = 8;
         header.setLayout(layout);
-
-        Label title = new Label(header, SWT.NONE);
-        title.setText("Chat");
-        title.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false));
 
         ToolBar toolbar = new ToolBar(header, SWT.FLAT | SWT.RIGHT);
         toolbar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false));
@@ -401,6 +396,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private Composite createAttachmentsBar(Composite parent) {
         Composite bar = new Composite(parent, SWT.NONE);
+        this.attachmentsBar = bar;
         GridLayout layout = new GridLayout(2, false);
         layout.marginWidth = 8;
         layout.marginHeight = 6;
@@ -687,16 +683,71 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         if (session == null) {
             return;
         }
-        chatHistory.activate(session);
-        clearChatView();
-        clearAttachments();
 
-        for (RenderedMessage m : session.messages) {
-            appendMessage(m.messageId, m.role);
-            setMessageHtml(m.messageId, m.htmlOrMarkdown);
-        }
+        List<RenderedMessage> snapshot = new ArrayList<RenderedMessage>(session.messages);
+        chatHistory.activate(session);
+
+        resetBrowserPresentationOnly();
+        clearAttachments();
+        renderSnapshot(snapshot);
 
         showNotification("Loaded chat: " + session.title, Duration.ofSeconds(2), NotificationType.INFO);
+    }
+
+    private void resetBrowserPresentationOnly() {
+        if (browser == null || browser.isDisposed()) {
+            return;
+        }
+        initializeChatView(browser);
+        applyThemeToBrowser();
+    }
+
+    private void renderSnapshot(List<RenderedMessage> snapshot) {
+        if (browser == null || browser.isDisposed()) {
+            return;
+        }
+        if (snapshot == null) {
+            return;
+        }
+
+        for (RenderedMessage m : snapshot) {
+            appendMessageInBrowserOnly(m.messageId, m.role);
+            setMessageHtmlInBrowserOnly(m.messageId, m.htmlOrMarkdown);
+        }
+
+        if (autoScrollEnabled) {
+            browser.execute("window.scrollTo(0, document.body.scrollHeight);");
+        }
+    }
+
+    private void appendMessageInBrowserOnly(String messageId, String role) {
+        final String cssClass = "user".equals(role) ? "chat-bubble me" : "chat-bubble you";
+        String id = escapeForJs(messageId);
+        String js = "var node = document.createElement('div');"
+                + "node.setAttribute('id', 'message-" + id + "');"
+                + "node.setAttribute('class', '" + cssClass + "');"
+                + "var toolbar = document.createElement('div');"
+                + "toolbar.setAttribute('class', 'message-toolbar');"
+                + "var trash = document.createElement('i');"
+                + "trash.setAttribute('class', 'fa-solid fa-trash');"
+                + "trash.onclick = function() { window.eclipseRemoveMessage('" + id + "'); };"
+                + "toolbar.appendChild(trash);"
+                + "var content = document.createElement('div');"
+                + "content.setAttribute('id', 'message-content-" + id + "');"
+                + "node.appendChild(toolbar);"
+                + "node.appendChild(content);"
+                + "document.getElementById('content').appendChild(node);";
+        browser.execute(js);
+    }
+
+    private void setMessageHtmlInBrowserOnly(String messageId, String htmlOrMarkdown) {
+        String body = markdown.toHtml(htmlOrMarkdown);
+        String fixed = escapeForJsStringLiteral(body);
+        String id = escapeForJs(messageId);
+
+        String js = "var target = document.getElementById('message-content-" + id + "') || document.getElementById('message-" + id + "');"
+                + "if (target) { target.innerHTML = '" + fixed + "'; } renderCode();";
+        browser.execute(js);
     }
 
     private void clearAttachments() {
@@ -722,6 +773,12 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     }
 
     private void renderAttachments() {
+        if (attachments == null) {
+            return;
+        }
+        if (attachmentsBar == null || attachmentsBar.isDisposed()) {
+            return;
+        }
         if (attachmentChips == null || attachmentChips.isDisposed()) {
             return;
         }
@@ -736,13 +793,20 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         attachmentChips.layout(true, true);
-        attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
-
-        GridData data = (GridData) attachmentsBar.getLayoutData();
-        if (data != null) {
-            data.heightHint = attachments.isEmpty() ? 0 : 42;
+        if (attachmentsScroll != null && !attachmentsScroll.isDisposed()) {
+            attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
         }
-        attachmentsBar.getParent().layout(true, true);
+
+        Object layoutData = attachmentsBar.getLayoutData();
+        if (layoutData instanceof GridData) {
+            ((GridData) layoutData).heightHint = attachments.isEmpty() ? 0 : 42;
+        }
+
+        org.eclipse.swt.widgets.Composite parent = attachmentsBar.getParent();
+        if (parent != null && !parent.isDisposed()) {
+            parent.layout(true, true);
+        }
+
     }
 
     private void createAttachmentChip(Composite parent, final FileAttachment a, final int index) {
@@ -1028,6 +1092,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         String css = loadCss();
         String js = loadJavaScripts();
         String fonts = fontCssBuilder.buildCss();
+        String themeCss = buildBrowserThemeCss(darkTheme);
 
         String banner = "";
         boolean missingCoreAssets = css.indexOf("/*MISSING:textview.css*/") >= 0 || js.indexOf("/*MISSING:textview.js*/") >= 0;
@@ -1045,7 +1110,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 + "<meta charset=\"utf-8\"/>"
                 + "<style>" + css + "</style>"
                 + "<style>" + fonts + "</style>"
-                + "<style id=\"theme-css\"></style>"
+                + "<style id=\"theme-css\">" + themeCss + "</style>"
                 + "<script>" + js + "</script>"
                 + "</head>"
                 + "<body>"
