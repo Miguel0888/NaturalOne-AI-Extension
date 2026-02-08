@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="plugins">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../../Program Files/Eclipse Neon/plugins" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="file://$PROJECT_DIR$/../../Program Files/Eclipse Neon/plugins" />
+    </SOURCES>
+    <jarDirectory url="file://$PROJECT_DIR$/../../Program Files/Eclipse Neon/plugins" recursive="false" />
+    <jarDirectory url="file://$PROJECT_DIR$/../../Program Files/Eclipse Neon/plugins" recursive="false" type="SOURCES" />
+  </library>
+</component>
