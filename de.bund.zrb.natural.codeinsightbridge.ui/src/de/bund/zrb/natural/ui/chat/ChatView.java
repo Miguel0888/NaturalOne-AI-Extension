@@ -55,6 +55,8 @@ import de.bund.zrb.natural.ui.chat.internal.ChatViewPort;
 import de.bund.zrb.natural.ui.chat.internal.DummyChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.EmbeddedFontCssBuilder;
 import de.bund.zrb.natural.ui.chat.internal.MiniMarkdownParser;
+import de.bund.zrb.natural.ui.chat.internal.FallbackUiResources;
+
 
 /**
  * Provide an AssistAI-like chat UI (click dummy) without any real backend.
