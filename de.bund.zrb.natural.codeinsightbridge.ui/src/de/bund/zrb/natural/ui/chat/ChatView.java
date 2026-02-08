@@ -101,6 +101,11 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private ScrolledComposite attachmentsScroll;
     private Composite attachmentChips;
     private ToolItem settingsItem;
+    private ToolItem historyToolItem;
+    private ToolItem newChatToolItem;
+    private ToolItem resendToolItem;
+    private ToolItem toolsToolItem;
+    private Menu toolsPopupMenu;
     private Menu settingsMenu;
     private Menu historyMenu;
     private Menu toolsMenu;
@@ -235,9 +240,26 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         ToolBar toolbar = new ToolBar(header, SWT.FLAT | SWT.RIGHT);
         toolbar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false));
 
+        // Order like Copilot: Settings, History, New Chat, Resend, Tools
         settingsItem = new ToolItem(toolbar, SWT.PUSH);
-        settingsItem.setText("⚙");
+        settingsItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_SYNCED));
         settingsItem.setToolTipText("Settings");
+
+        historyToolItem = new ToolItem(toolbar, SWT.PUSH);
+        historyToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FOLDER));
+        historyToolItem.setToolTipText("History");
+
+        newChatToolItem = new ToolItem(toolbar, SWT.PUSH);
+        newChatToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_NEW_WIZARD));
+        newChatToolItem.setToolTipText("New chat");
+
+        resendToolItem = new ToolItem(toolbar, SWT.PUSH);
+        resendToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_REDO));
+        resendToolItem.setToolTipText("Resend");
+
+        toolsToolItem = new ToolItem(toolbar, SWT.PUSH);
+        toolsToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_SYNCED));
+        toolsToolItem.setToolTipText("Tools");
 
         createMenus(toolbar);
 
@@ -245,6 +267,30 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 openSettingsMenu(toolbar);
+            }
+        });
+        historyToolItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                openHistoryMenuForToolItem(toolbar, historyToolItem);
+            }
+        });
+        newChatToolItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                startNewChat();
+            }
+        });
+        resendToolItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                presenter.onReplayLastMessage();
+            }
+        });
+        toolsToolItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                openToolsMenu(toolbar);
             }
         });
 
@@ -261,46 +307,19 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         if (toolsMenu != null && !toolsMenu.isDisposed()) {
             toolsMenu.dispose();
         }
+        if (toolsPopupMenu != null && !toolsPopupMenu.isDisposed()) {
+            toolsPopupMenu.dispose();
+        }
 
         settingsMenu = new Menu(getSite().getShell(), SWT.POP_UP);
 
-        MenuItem newChat = new MenuItem(settingsMenu, SWT.PUSH);
-        newChat.setText("New chat");
-        newChat.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                startNewChat();
-            }
-        });
-
-        MenuItem history = new MenuItem(settingsMenu, SWT.PUSH);
-        history.setText("History...");
-        history.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                openHistoryMenu();
-            }
-        });
-
-        MenuItem resend = new MenuItem(settingsMenu, SWT.PUSH);
-        resend.setText("Resend");
-        resend.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                presenter.onReplayLastMessage();
-            }
-        });
-
-        MenuItem toolsCascade = new MenuItem(settingsMenu, SWT.CASCADE);
-        toolsCascade.setText("Tools");
-        toolsMenu = new Menu(settingsMenu);
-        toolsCascade.setMenu(toolsMenu);
+        // Tools are now their own top-level button, not inside Settings.
+        toolsPopupMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+        toolsMenu = toolsPopupMenu;
         addToolMenuItem(toolsMenu, "Explain selection", true);
         addToolMenuItem(toolsMenu, "Generate tests", true);
         addToolMenuItem(toolsMenu, "Refactor", true);
         addToolMenuItem(toolsMenu, "Configure tools...", true);
-
-        new MenuItem(settingsMenu, SWT.SEPARATOR);
 
         MenuItem appearanceCascade = new MenuItem(settingsMenu, SWT.CASCADE);
         appearanceCascade.setText("Appearance");
@@ -370,6 +389,27 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         Point p = Display.getDefault().getCursorLocation();
         historyMenu.setLocation(p);
         historyMenu.setVisible(true);
+    }
+
+    private void openHistoryMenuForToolItem(ToolBar toolbar, ToolItem item) {
+        if (historyMenu == null || historyMenu.isDisposed() || toolbar == null || item == null) {
+            return;
+        }
+        rebuildHistoryMenu();
+        Rectangle rect = item.getBounds();
+        Point pt = toolbar.toDisplay(new Point(rect.x, rect.y + rect.height));
+        historyMenu.setLocation(pt);
+        historyMenu.setVisible(true);
+    }
+
+    private void openToolsMenu(ToolBar toolbar) {
+        if (toolsPopupMenu == null || toolsPopupMenu.isDisposed() || toolsToolItem == null) {
+            return;
+        }
+        Rectangle rect = toolsToolItem.getBounds();
+        Point pt = toolbar.toDisplay(new Point(rect.x, rect.y + rect.height));
+        toolsPopupMenu.setLocation(pt);
+        toolsPopupMenu.setVisible(true);
     }
 
     private void updateThemeMenuSelection() {
