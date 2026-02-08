@@ -16,6 +16,8 @@ import org.eclipse.jface.fieldassist.IContentProposalProvider;
 import org.eclipse.jface.fieldassist.TextContentAdapter;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
+import org.eclipse.core.runtime.preferences.IEclipsePreferences;
+import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
@@ -28,8 +30,12 @@ import org.eclipse.swt.events.MouseAdapter;
 import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.events.MenuAdapter;
+import org.eclipse.swt.events.MenuEvent;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
@@ -46,6 +52,8 @@ import org.eclipse.swt.widgets.ToolBar;
 import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
+import org.osgi.framework.FrameworkUtil;
+import org.osgi.service.prefs.BackingStoreException;
 import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.themes.ITheme;
 import org.eclipse.ui.themes.IThemeManager;
@@ -66,6 +74,14 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     public static final String VIEW_ID = "de.bund.zrb.natural.codeinsightbridge.ui.chatView";
 
     private static final DateTimeFormatter HISTORY_TITLE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String PREF_THEME_MODE = "chat.ui.themeMode";
+
+    private enum ThemeMode {
+        AUTO,
+        LIGHT,
+        DARK
+    }
+
 
     private final BundleResourceReader resourceReader;
     private final EmbeddedFontCssBuilder fontCssBuilder;
@@ -84,10 +100,17 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private Composite attachmentsBar;
     private ScrolledComposite attachmentsScroll;
     private Composite attachmentChips;
-
-    private ToolItem resendItem;
-    private ToolItem historyItem;
+    private ToolItem settingsItem;
+    private Menu settingsMenu;
     private Menu historyMenu;
+    private Menu toolsMenu;
+
+    private MenuItem themeAutoItem;
+    private MenuItem themeLightItem;
+    private MenuItem themeDarkItem;
+
+    private ThemeMode themeMode;
+    private final String preferencesNodeName;
 
     private boolean autoScrollEnabled;
     private int notificationIdCounter;
@@ -125,6 +148,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         this.attachments = new ArrayList<FileAttachment>();
         this.providers = createDefaultProviders();
         this.chatHistory = new ChatHistory();
+        this.preferencesNodeName = FrameworkUtil.getBundle(ChatView.class).getSymbolicName();
+        this.themeMode = ThemeMode.AUTO;
         this.darkTheme = true;
     }
 
@@ -136,6 +161,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         rootLayout.marginHeight = 0;
         root.setLayout(rootLayout);
 
+        this.themeMode = loadThemeModePreference();
+        this.darkTheme = resolveDarkTheme();
+
+
         Composite header = createConversationHeader(root);
         header.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
@@ -144,7 +173,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         browserContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
         browser = new Browser(browserContainer, SWT.NONE);
-        this.darkTheme = detectDarkTheme();
         initializeFunctions(browser);
         initializeChatView(browser);
 
@@ -158,7 +186,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         promptData.heightHint = 160;
         promptContainer.setLayoutData(promptData);
 
-        applyAutoTheme();
+        applyThemeFromMode();
         registerThemeListener();
 
         chatHistory.ensureActiveSessionExists();
@@ -176,9 +204,26 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     @Override
     public void dispose() {
         unregisterThemeListener();
+        disposeMenus();
         disposeColors();
         super.dispose();
     }
+
+    private void disposeMenus() {
+        disposeMenu(settingsMenu);
+        disposeMenu(historyMenu);
+        disposeMenu(toolsMenu);
+    }
+
+    private void disposeMenu(Menu menu) {
+        if (menu == null) {
+            return;
+        }
+        if (!menu.isDisposed()) {
+            menu.dispose();
+        }
+    }
+
 
     private Composite createConversationHeader(Composite parent) {
         Composite header = new Composite(parent, SWT.NONE);
@@ -195,55 +240,151 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         ToolBar toolbar = new ToolBar(header, SWT.FLAT | SWT.RIGHT);
         toolbar.setLayoutData(new GridData(SWT.END, SWT.CENTER, true, false));
 
-        historyItem = new ToolItem(toolbar, SWT.DROP_DOWN);
-        historyItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJS_INFO_TSK));
-        historyItem.setToolTipText("History");
+        settingsItem = new ToolItem(toolbar, SWT.PUSH);
+        settingsItem.setText("⚙");
+        settingsItem.setToolTipText("Settings");
 
-        historyMenu = new Menu(getSite().getShell(), SWT.POP_UP);
-        historyItem.addSelectionListener(new SelectionAdapter() {
+        createMenus(toolbar);
+
+        settingsItem.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
-                rebuildHistoryMenu();
-                historyMenu.setVisible(true);
+                openSettingsMenu(toolbar);
             }
         });
 
-        ToolItem newChatItem = new ToolItem(toolbar, SWT.PUSH);
-        newChatItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_ADD));
-        newChatItem.setToolTipText("New chat");
-        newChatItem.addSelectionListener(new SelectionAdapter() {
+        return header;
+    }
+
+    private void createMenus(final ToolBar toolbar) {
+        if (settingsMenu != null && !settingsMenu.isDisposed()) {
+            settingsMenu.dispose();
+        }
+        if (historyMenu != null && !historyMenu.isDisposed()) {
+            historyMenu.dispose();
+        }
+        if (toolsMenu != null && !toolsMenu.isDisposed()) {
+            toolsMenu.dispose();
+        }
+
+        settingsMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+
+        MenuItem newChat = new MenuItem(settingsMenu, SWT.PUSH);
+        newChat.setText("New chat");
+        newChat.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 startNewChat();
             }
         });
 
-        resendItem = new ToolItem(toolbar, SWT.PUSH);
-        resendItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_REDO));
-        resendItem.setToolTipText("Resend / regenerate");
-        resendItem.addSelectionListener(new SelectionAdapter() {
+        MenuItem history = new MenuItem(settingsMenu, SWT.PUSH);
+        history.setText("History...");
+        history.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                openHistoryMenu();
+            }
+        });
+
+        MenuItem resend = new MenuItem(settingsMenu, SWT.PUSH);
+        resend.setText("Resend");
+        resend.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 presenter.onReplayLastMessage();
             }
         });
 
-        ToolItem toolsItem = new ToolItem(toolbar, SWT.DROP_DOWN);
-        toolsItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_SYNCED));
-        toolsItem.setToolTipText("Tools");
-        final Menu toolsMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+        MenuItem toolsCascade = new MenuItem(settingsMenu, SWT.CASCADE);
+        toolsCascade.setText("Tools");
+        toolsMenu = new Menu(settingsMenu);
+        toolsCascade.setMenu(toolsMenu);
         addToolMenuItem(toolsMenu, "Explain selection", true);
         addToolMenuItem(toolsMenu, "Generate tests", true);
         addToolMenuItem(toolsMenu, "Refactor", true);
         addToolMenuItem(toolsMenu, "Configure tools...", true);
-        toolsItem.addSelectionListener(new SelectionAdapter() {
+
+        new MenuItem(settingsMenu, SWT.SEPARATOR);
+
+        MenuItem appearanceCascade = new MenuItem(settingsMenu, SWT.CASCADE);
+        appearanceCascade.setText("Appearance");
+        Menu appearanceMenu = new Menu(settingsMenu);
+        appearanceCascade.setMenu(appearanceMenu);
+
+        themeAutoItem = new MenuItem(appearanceMenu, SWT.RADIO);
+        themeAutoItem.setText("Auto (follow Eclipse)");
+        themeAutoItem.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
-                toolsMenu.setVisible(true);
+                if (themeAutoItem.getSelection()) {
+                    setThemeMode(ThemeMode.AUTO);
+                }
             }
         });
 
-        return header;
+        themeLightItem = new MenuItem(appearanceMenu, SWT.RADIO);
+        themeLightItem.setText("Light");
+        themeLightItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                if (themeLightItem.getSelection()) {
+                    setThemeMode(ThemeMode.LIGHT);
+                }
+            }
+        });
+
+        themeDarkItem = new MenuItem(appearanceMenu, SWT.RADIO);
+        themeDarkItem.setText("Dark");
+        themeDarkItem.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                if (themeDarkItem.getSelection()) {
+                    setThemeMode(ThemeMode.DARK);
+                }
+            }
+        });
+
+        updateThemeMenuSelection();
+
+        settingsMenu.addMenuListener(new MenuAdapter() {
+            @Override
+            public void menuShown(MenuEvent e) {
+                updateThemeMenuSelection();
+            }
+        });
+
+        historyMenu = new Menu(getSite().getShell(), SWT.POP_UP);
+    }
+
+    private void openSettingsMenu(ToolBar toolbar) {
+        if (settingsMenu == null || settingsMenu.isDisposed() || settingsItem == null) {
+            return;
+        }
+        Rectangle rect = settingsItem.getBounds();
+        Point pt = toolbar.toDisplay(new Point(rect.x, rect.y + rect.height));
+        settingsMenu.setLocation(pt);
+        settingsMenu.setVisible(true);
+    }
+
+    private void openHistoryMenu() {
+        if (historyMenu == null || historyMenu.isDisposed()) {
+            return;
+        }
+        rebuildHistoryMenu();
+        Point p = Display.getDefault().getCursorLocation();
+        historyMenu.setLocation(p);
+        historyMenu.setVisible(true);
+    }
+
+    private void updateThemeMenuSelection() {
+        if (themeAutoItem == null || themeLightItem == null || themeDarkItem == null) {
+            return;
+        }
+        ThemeMode mode = themeMode == null ? ThemeMode.AUTO : themeMode;
+        themeAutoItem.setSelection(mode == ThemeMode.AUTO);
+        themeLightItem.setSelection(mode == ThemeMode.LIGHT);
+        themeDarkItem.setSelection(mode == ThemeMode.DARK);
     }
 
     private void addToolMenuItem(Menu menu, String label, boolean enabled) {
@@ -260,7 +401,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private Composite createAttachmentsBar(Composite parent) {
         Composite bar = new Composite(parent, SWT.NONE);
-        this.attachmentsBar = bar;
         GridLayout layout = new GridLayout(2, false);
         layout.marginWidth = 8;
         layout.marginHeight = 6;
@@ -499,8 +639,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         if ("history".equalsIgnoreCase(cmd)) {
-            rebuildHistoryMenu();
-            historyMenu.setVisible(true);
+            openHistoryMenu();
             clearUserInput();
             return;
         }
@@ -597,26 +736,13 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         attachmentChips.layout(true, true);
+        attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 
-        if (attachmentsScroll != null && !attachmentsScroll.isDisposed()) {
-            attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+        GridData data = (GridData) attachmentsBar.getLayoutData();
+        if (data != null) {
+            data.heightHint = attachments.isEmpty() ? 0 : 42;
         }
-
-        if (attachmentsBar == null || attachmentsBar.isDisposed()) {
-            return;
-        }
-
-        Object layoutData = attachmentsBar.getLayoutData();
-        if (layoutData instanceof GridData) {
-            ((GridData) layoutData).heightHint = attachments.isEmpty() ? 0 : 42;
-        }
-
-        org.eclipse.swt.widgets.Composite parent = attachmentsBar.getParent();
-        if (parent != null && !parent.isDisposed()) {
-            parent.layout(true, true);
-        } else {
-            attachmentsBar.layout(true, true);
-        }
+        attachmentsBar.getParent().layout(true, true);
     }
 
     private void createAttachmentChip(Composite parent, final FileAttachment a, final int index) {
@@ -655,11 +781,57 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                         + "Use the mode/provider dropdowns and attach files to see how the UI behaves.");
     }
 
-    private void applyAutoTheme() {
-        this.darkTheme = detectDarkTheme();
+
+    private ThemeMode loadThemeModePreference() {
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            String value = prefs.get(PREF_THEME_MODE, ThemeMode.AUTO.name());
+            return ThemeMode.valueOf(value);
+        } catch (Exception ex) {
+            return ThemeMode.AUTO;
+        }
+    }
+
+    private void saveThemeModePreference(ThemeMode mode) {
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            prefs.put(PREF_THEME_MODE, mode.name());
+            prefs.flush();
+        } catch (BackingStoreException ex) {
+            // Ignore - preferences are best-effort.
+        }
+    }
+
+    private void setThemeMode(ThemeMode mode) {
+        if (mode == null) {
+            mode = ThemeMode.AUTO;
+        }
+        this.themeMode = mode;
+        saveThemeModePreference(mode);
+        applyThemeFromMode();
+    }
+
+    private boolean resolveDarkTheme() {
+        if (themeMode == ThemeMode.DARK) {
+            return true;
+        }
+        if (themeMode == ThemeMode.LIGHT) {
+            return false;
+        }
+        return detectDarkTheme();
+    }
+
+    private void applyThemeFromMode() {
+        this.darkTheme = resolveDarkTheme();
         createOrUpdateColors(darkTheme);
         applyThemeToSwt();
         applyThemeToBrowser();
+    }
+
+    private void applyAutoTheme() {
+        if (themeMode == ThemeMode.AUTO) {
+            applyThemeFromMode();
+        }
     }
 
     private boolean detectDarkTheme() {
@@ -690,7 +862,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         themeListener = new IPropertyChangeListener() {
             @Override
             public void propertyChange(PropertyChangeEvent event) {
-                applyAutoTheme();
+                if (themeMode == ThemeMode.AUTO) {
+                    applyThemeFromMode();
+                }
             }
         };
         try {
@@ -807,15 +981,17 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private String buildBrowserThemeCss(boolean dark) {
         if (dark) {
-            return "body{background-color:#1e1e1e;color:#f0f0f0;}"
-                    + ".chat-bubble.me{background-color:#2d333b;}"
-                    + ".chat-bubble.you{background-color:#1e1e1e;}";
+            return "html,body,#content{background-color:#1e1e1e !important;color:#f0f0f0 !important;}"
+                    + ".chat-bubble{border-bottom:1px solid rgba(255,255,255,0.10) !important;}"
+                    + ".chat-bubble.me{background-color:#2d333b !important;}"
+                    + ".chat-bubble.you{background-color:#1e1e1e !important;}"
+                    + "pre,code{background-color:rgba(255,255,255,0.08) !important;}";
         }
-        return "body{background-color:#ffffff;color:#111111;}"
-                + ".chat-bubble{border-bottom:1px solid rgba(0,0,0,0.08);}"
-                + ".chat-bubble.me{background-color:#f3f3f3;}"
-                + ".chat-bubble.you{background-color:#ffffff;}"
-                + "code{background-color:rgba(0,0,0,0.08);}";
+        return "html,body,#content{background-color:#ffffff !important;color:#111111 !important;}"
+                + ".chat-bubble{border-bottom:1px solid rgba(0,0,0,0.08) !important;}"
+                + ".chat-bubble.me{background-color:#f3f3f3 !important;}"
+                + ".chat-bubble.you{background-color:#ffffff !important;}"
+                + "pre,code{background-color:rgba(0,0,0,0.08) !important;}";
     }
 
     private static String[] toProviderLabels(List<ModelOption> providers) {
@@ -1163,7 +1339,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 return;
             }
             if (!active.messages.isEmpty()) {
-                archived.add(active);
+                if (!archived.contains(active)) {
+                    archived.add(active);
+                }
             }
             active = newSession();
         }
@@ -1173,7 +1351,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 return;
             }
             this.active = session;
-            this.archived.remove(session);
         }
 
         private ChatSession newSession() {
