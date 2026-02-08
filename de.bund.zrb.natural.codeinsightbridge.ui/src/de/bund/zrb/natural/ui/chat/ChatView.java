@@ -75,6 +75,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private static final DateTimeFormatter HISTORY_TITLE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String PREF_THEME_MODE = "chat.ui.themeMode";
+    private static final String PREF_CHAT_MODE = "chat.ui.mode";
+    private static final String PREF_CHAT_PROVIDER_ID = "chat.ui.providerId";
+    private static final String DEFAULT_CHAT_MODE = "Ask";
+    private static final String DEFAULT_PROVIDER_ID = "custom";
 
     private enum ThemeMode {
         AUTO,
@@ -169,6 +173,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         this.themeMode = loadThemeModePreference();
         this.darkTheme = resolveDarkTheme();
 
+        // Load persisted selections early so controls can restore their state.
+        final String persistedMode = loadChatModePreference();
+        final String persistedProviderId = loadChatProviderPreference();
 
         Composite header = createConversationHeader(root);
         header.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
@@ -186,7 +193,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         attachmentsData.heightHint = 0;
         attachmentsBar.setLayoutData(attachmentsData);
 
-        promptContainer = createPromptContainer(root);
+        promptContainer = createPromptContainer(root, persistedMode, persistedProviderId);
         GridData promptData = new GridData(SWT.FILL, SWT.BOTTOM, true, false);
         promptData.heightHint = 160;
         promptContainer.setLayoutData(promptData);
@@ -479,7 +486,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         return bar;
     }
 
-    private Composite createPromptContainer(Composite parent) {
+    private Composite createPromptContainer(Composite parent, String persistedMode, String persistedProviderId) {
         Composite prompt = new Composite(parent, SWT.NONE);
         GridLayout layout = new GridLayout(1, false);
         layout.marginWidth = 8;
@@ -510,16 +517,26 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         modeCombo = new Combo(left, SWT.DROP_DOWN | SWT.READ_ONLY);
         modeCombo.setItems(new String[]{"Ask", "Edit", "Agent", "Plan"});
-        modeCombo.select(0);
+        restoreModeSelection(modeCombo, persistedMode);
+        modeCombo.addSelectionListener(new SelectionAdapter() {
+            @Override
+            public void widgetSelected(SelectionEvent e) {
+                saveChatModePreference(modeCombo.getText());
+            }
+        });
 
         providerCombo = new Combo(left, SWT.DROP_DOWN | SWT.READ_ONLY);
         providerCombo.setItems(toProviderLabels(providers));
-        providerCombo.select(0);
+        int providerIndex = restoreProviderSelection(providerCombo, persistedProviderId);
+        if (providerIndex >= 0 && providerIndex < providers.size()) {
+            presenter.onChatModelSelected(providers.get(providerIndex).id);
+        }
         providerCombo.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 int idx = providerCombo.getSelectionIndex();
                 if (idx >= 0 && idx < providers.size()) {
+                    saveChatProviderPreference(providers.get(idx).id);
                     presenter.onChatModelSelected(providers.get(idx).id);
                 }
             }
@@ -883,6 +900,84 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 "Welcome! This is a Copilot-like UI dummy.\n\n"
                         + "Enter sends, Shift+Enter adds a line break.\n"
                         + "Use the mode/provider dropdowns and attach files to see how the UI behaves.");
+    }
+
+    private void restoreModeSelection(Combo combo, String persistedMode) {
+        if (combo == null || combo.isDisposed()) {
+            return;
+        }
+        String desired = persistedMode == null ? "" : persistedMode.trim();
+        if (desired.isEmpty()) {
+            desired = DEFAULT_CHAT_MODE;
+        }
+
+        String[] items = combo.getItems();
+        for (int i = 0; i < items.length; i++) {
+            if (desired.equalsIgnoreCase(items[i])) {
+                combo.select(i);
+                return;
+            }
+        }
+        combo.select(0);
+    }
+
+    private int restoreProviderSelection(Combo combo, String persistedProviderId) {
+        if (combo == null || combo.isDisposed()) {
+            return 0;
+        }
+        String desired = persistedProviderId == null ? "" : persistedProviderId.trim();
+        if (desired.isEmpty()) {
+            desired = DEFAULT_PROVIDER_ID;
+        }
+
+        for (int i = 0; i < providers.size(); i++) {
+            if (desired.equalsIgnoreCase(providers.get(i).id)) {
+                combo.select(i);
+                return i;
+            }
+        }
+        combo.select(0);
+        return 0;
+    }
+
+    private String loadChatModePreference() {
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            return prefs.get(PREF_CHAT_MODE, DEFAULT_CHAT_MODE);
+        } catch (Exception ex) {
+            return DEFAULT_CHAT_MODE;
+        }
+    }
+
+    private void saveChatModePreference(String mode) {
+        String value = (mode == null || mode.trim().isEmpty()) ? DEFAULT_CHAT_MODE : mode.trim();
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            prefs.put(PREF_CHAT_MODE, value);
+            prefs.flush();
+        } catch (BackingStoreException ex) {
+            // best-effort
+        }
+    }
+
+    private String loadChatProviderPreference() {
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            return prefs.get(PREF_CHAT_PROVIDER_ID, DEFAULT_PROVIDER_ID);
+        } catch (Exception ex) {
+            return DEFAULT_PROVIDER_ID;
+        }
+    }
+
+    private void saveChatProviderPreference(String providerId) {
+        String value = (providerId == null || providerId.trim().isEmpty()) ? DEFAULT_PROVIDER_ID : providerId.trim();
+        try {
+            IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(preferencesNodeName);
+            prefs.put(PREF_CHAT_PROVIDER_ID, value);
+            prefs.flush();
+        } catch (BackingStoreException ex) {
+            // best-effort
+        }
     }
 
 
