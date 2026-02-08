@@ -158,7 +158,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         createStopToolItem(actionToolBar);
         createSendToolItem(actionToolBar);
 
-        sashForm.setWeights(new int[] { 70, 30 });
+        sashForm.setWeights(new int[]{70, 30});
 
         // Build model menu and select the default model.
         setAvailableModels(models, selectedModelId);
@@ -178,7 +178,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     }
 
 
-
     private void initializeFunctions(Browser b) {
         new CopyCodeFunction(b, "eclipseFunc");
         new CopyCodeFunction(b, "eclipseCopyCode");
@@ -195,37 +194,81 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         String js = loadJavaScripts();
         String fonts = fontCssBuilder.buildCss();
 
+
+        String banner = "";
+        boolean missingCoreAssets = css.indexOf("/*MISSING:textview.css*/") >= 0 || js.indexOf("/*MISSING:textview.js*/") >= 0;
+        if (missingCoreAssets) {
+            banner = FallbackUiResources.missingAssetsBannerHtml(
+                    "Mindestens css/textview.css oder js/textview.js wurde im installierten Bundle nicht gefunden. "
+                            + "Prüfe build.properties (bin.includes) und ob die Ressourcen im Bundle-JAR wirklich enthalten sind. "
+                            + "Details stehen im Error Log."
+            );
+        }
+
+
         String html = "<!DOCTYPE html>"
                 + "<html>"
                 + "<head>"
+                + "<meta charset=\"utf-8\"/>"
                 + "<style>" + css + "</style>"
                 + "<style>" + fonts + "</style>"
                 + "<script>" + js + "</script>"
                 + "</head>"
                 + "<body>"
                 + "<div id=\"notification-container\"></div>"
+                + banner
                 + "<div id=\"content\"></div>"
                 + "</body>"
                 + "</html>";
+
 
         b.setText(html);
     }
 
     private String loadCss() {
-        String[] cssFiles = new String[] { "textview.css", "dark.min.css", "fa6.all.min.css", "katex.min.css" };
+        String[] cssFiles = new String[]{"textview.css", "dark.min.css", "fa6.all.min.css", "katex.min.css"};
         StringBuilder sb = new StringBuilder();
+
+
         for (String f : cssFiles) {
-            sb.append(resourceReader.readUtf8("css/" + f)).append("\n");
+            String path = "css/" + f;
+            String content = resourceReader.readUtf8OrEmpty(path);
+            if (content.isEmpty() && "textview.css".equals(f)) {
+                // Mark missing core asset so we can show a banner.
+                sb.append("/*MISSING:textview.css*/\n");
+                sb.append(FallbackUiResources.minimalCss()).append("\n");
+            } else {
+                sb.append(content).append("\n");
+            }
         }
+
+
         return sb.toString();
     }
 
+
     private String loadJavaScripts() {
-        String[] jsFiles = new String[] { "highlight.min.js", "textview.js", "katex.min.js" };
+        String[] jsFiles = new String[]{"highlight.min.js", "textview.js", "katex.min.js"};
         StringBuilder sb = new StringBuilder();
+
+
         for (String f : jsFiles) {
-            sb.append(resourceReader.readUtf8("js/" + f)).append("\n\n");
+            String path = "js/" + f;
+            String content = resourceReader.readUtf8OrEmpty(path);
+            if (content.isEmpty() && "textview.js".equals(f)) {
+            // Mark missing core asset so we can show a banner.
+                sb.append("/*MISSING:textview.js*/\n");
+                sb.append(FallbackUiResources.minimalJs()).append("\n\n");
+            } else {
+                sb.append(content).append("\n\n");
+            }
         }
+
+
+        // Ensure required functions exist even when some scripts are missing.
+        sb.append("\n\n").append(FallbackUiResources.minimalJs());
+
+
         return sb.toString();
     }
 
@@ -305,7 +348,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private void openImageDialogAndAttach() {
         FileDialog dialog = new FileDialog(getSite().getShell(), SWT.MULTI);
         dialog.setText("Select images");
-        dialog.setFilterExtensions(new String[] { "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp" });
+        dialog.setFilterExtensions(new String[]{"*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"});
         String first = dialog.open();
         if (first == null) {
             return;
@@ -878,7 +921,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private void copyToClipboard(String text) {
         Clipboard clipboard = new Clipboard(getSite().getShell().getDisplay());
         try {
-            clipboard.setContents(new Object[] { text }, new org.eclipse.swt.dnd.Transfer[] { TextTransfer.getInstance() });
+            clipboard.setContents(new Object[]{text}, new org.eclipse.swt.dnd.Transfer[]{TextTransfer.getInstance()});
         } finally {
             clipboard.dispose();
         }
@@ -946,7 +989,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             final Display display = Display.getCurrent();
             final Image normal = createThumbnailWithBorder(preview, display, false);
             final Image selected = createThumbnailWithBorder(preview, display, true);
-            final boolean[] isSelected = new boolean[] { false };
+            final boolean[] isSelected = new boolean[]{false};
 
             final Label imageLabel = new Label(imagesContainer, SWT.NONE);
             imageLabel.setImage(normal);
