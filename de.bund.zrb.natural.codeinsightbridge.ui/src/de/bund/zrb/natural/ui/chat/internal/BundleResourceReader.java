@@ -1,12 +1,6 @@
 package de.bund.zrb.natural.ui.chat.internal;
-
-
-ILog log = Platform.getLog(bundle);
-
-
-String message = buildNotFoundMessage(path)
-        + "\nAvailable CSS entries: " + listBundleEntries("/css", "*.css", true)
-        + "\nAvailable JS entries: " + listBundleEntries("/js", "*.js", true);
++ "\nAvailable CSS entries: " + listBundleEntries("/css", "*.css", true)
++ "\nAvailable JS entries: " + listBundleEntries("/js", "*.js", true);
 
 
 log.log(new Status(Status.WARNING, bundle.getSymbolicName(), message, ex));
