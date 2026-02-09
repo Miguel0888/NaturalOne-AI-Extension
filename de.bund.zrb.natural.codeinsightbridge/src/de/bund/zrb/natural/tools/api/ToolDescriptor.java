@@ -13,9 +13,16 @@ public final class ToolDescriptor {
     private final ToolRiskLevel riskLevel;
     private final ToolSchema inputSchema;
     private final ToolSchema outputSchema;
+    private final String exampleArgumentsJson;
 
     public ToolDescriptor(String id, String displayName, String description, String category,
             ToolCapability capability, ToolRiskLevel riskLevel, ToolSchema inputSchema, ToolSchema outputSchema) {
+        this(id, displayName, description, category, capability, riskLevel, inputSchema, outputSchema, null);
+    }
+
+    public ToolDescriptor(String id, String displayName, String description, String category,
+            ToolCapability capability, ToolRiskLevel riskLevel, ToolSchema inputSchema, ToolSchema outputSchema,
+            String exampleArgumentsJson) {
         this.id = id;
         this.displayName = displayName;
         this.description = description;
@@ -24,6 +31,7 @@ public final class ToolDescriptor {
         this.riskLevel = riskLevel;
         this.inputSchema = inputSchema == null ? ToolSchema.none() : inputSchema;
         this.outputSchema = outputSchema;
+        this.exampleArgumentsJson = exampleArgumentsJson;
     }
 
     public String getId() {
@@ -56,6 +64,15 @@ public final class ToolDescriptor {
 
     public ToolSchema getOutputSchema() {
         return outputSchema;
+    }
+
+    /**
+     * Optional example payload for manual execution and documentation.
+     *
+     * Expected format: JSON object string, e.g. { "path": "/project/file.txt", "maxBytes": 20000 }
+     */
+    public String getExampleArgumentsJson() {
+        return exampleArgumentsJson;
     }
 }
 

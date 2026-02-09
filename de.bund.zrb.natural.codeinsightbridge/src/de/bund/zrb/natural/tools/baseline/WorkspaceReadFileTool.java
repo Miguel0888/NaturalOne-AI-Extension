@@ -46,7 +46,8 @@ public final class WorkspaceReadFileTool implements Tool {
                         .field("path", "Path")
                         .field("content", "UTF-8 content")
                         .field("truncated", "true if maxBytes was hit")
-                        .build());
+                        .build(),
+                "{ \"path\": \"/target-platform/pom.xml\", \"maxBytes\": 20000 }");
     }
 
     @Override

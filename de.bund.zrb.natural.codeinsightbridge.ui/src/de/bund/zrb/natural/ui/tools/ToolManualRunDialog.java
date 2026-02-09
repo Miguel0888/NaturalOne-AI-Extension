@@ -46,9 +46,19 @@ final class ToolManualRunDialog extends Dialog {
 
         json = new Text(c, SWT.BORDER | SWT.MULTI | SWT.V_SCROLL | SWT.H_SCROLL);
         json.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
-        json.setText("{}\n");
+        json.setText(getInitialJson());
 
         return area;
+    }
+
+    private String getInitialJson() {
+        String example = descriptor == null ? null : descriptor.getExampleArgumentsJson();
+        if (example == null || example.trim().isEmpty()) {
+            return "{}\n";
+        }
+        String t = example.trim();
+        // keep a trailing newline so the text box feels natural
+        return t.endsWith("\n") ? t : (t + "\n");
     }
 
     @Override
