@@ -82,6 +82,8 @@ import de.bund.zrb.natural.ui.chat.internal.DummyChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.EmbeddedFontCssBuilder;
 import de.bund.zrb.natural.ui.chat.internal.FallbackUiResources;
 import de.bund.zrb.natural.ui.chat.internal.MiniMarkdownParser;
+import de.bund.zrb.natural.ui.tools.ToolMenuBuilder;
+import de.bund.zrb.natural.ui.tools.ToolPolicyStore;
 
 /**
  * Provide a Copilot-like chat UI (click dummy) without any real backend.
@@ -364,10 +366,23 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         // Tools are now their own top-level button, not inside Settings.
         toolsPopupMenu = new Menu(getSite().getShell(), SWT.POP_UP);
         toolsMenu = toolsPopupMenu;
-        addToolMenuItem(toolsMenu, "Explain selection", true);
-        addToolMenuItem(toolsMenu, "Generate tests", true);
-        addToolMenuItem(toolsMenu, "Refactor", true);
-        addToolMenuItem(toolsMenu, "Configure tools...", true);
+
+        // Build tool menu dynamically when shown.
+        final ToolPolicyStore toolPolicyStore = new ToolPolicyStore();
+        toolsPopupMenu.addMenuListener(new MenuAdapter() {
+            @Override
+            public void menuShown(MenuEvent e) {
+                ToolMenuBuilder builder = new ToolMenuBuilder(getSite().getShell(), createToolContext(), toolPolicyStore);
+                builder.rebuildMenu(toolsPopupMenu, new ToolMenuBuilder.ToolResultSink() {
+                    @Override
+                    public void onToolResult(de.bund.zrb.natural.tools.api.ToolDescriptor descriptor,
+                            de.bund.zrb.natural.tools.api.ToolRequest request,
+                            de.bund.zrb.natural.tools.api.ToolResult result) {
+                        showToolResult(descriptor, request, result);
+                    }
+                });
+            }
+        });
 
         MenuItem appearanceCascade = new MenuItem(settingsMenu, SWT.CASCADE);
         appearanceCascade.setText("Appearance");
@@ -512,17 +527,6 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         themeDarkItem.setSelection(mode == ThemeMode.DARK);
     }
 
-    private void addToolMenuItem(Menu menu, String label, boolean enabled) {
-        MenuItem item = new MenuItem(menu, SWT.PUSH);
-        item.setText(label);
-        item.setEnabled(enabled);
-        item.addSelectionListener(new SelectionAdapter() {
-            @Override
-            public void widgetSelected(SelectionEvent e) {
-                showNotification("Tool is a dummy action in this plugin.", Duration.ofSeconds(2), NotificationType.INFO);
-            }
-        });
-    }
 
     private Composite createAttachmentsBar(Composite parent) {
         Composite bar = new Composite(parent, SWT.NONE);
@@ -1898,6 +1902,49 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         s = s.replace("\t", "\\t");
         s = s.replace("'", "\\'");
         return s;
+    }
+
+    private de.bund.zrb.natural.tools.api.ToolContext createToolContext() {
+        try {
+            return new de.bund.zrb.natural.tools.api.ToolContext(ResourcesPlugin.getWorkspace().getRoot(), null);
+        } catch (Exception e) {
+            return new de.bund.zrb.natural.tools.api.ToolContext(null, null);
+        }
+    }
+
+    private void showToolResult(de.bund.zrb.natural.tools.api.ToolDescriptor descriptor,
+            de.bund.zrb.natural.tools.api.ToolRequest request,
+            de.bund.zrb.natural.tools.api.ToolResult result) {
+        String title = descriptor == null ? "Tool" : descriptor.getDisplayName();
+        String summary = result == null ? "(kein Ergebnis)" : result.getHumanSummary();
+
+        showNotification(title + ": " + summary, Duration.ofSeconds(4),
+                result != null && result.getStatus() == de.bund.zrb.natural.tools.api.ToolStatus.ERROR
+                        ? NotificationType.ERROR
+                        : NotificationType.INFO);
+
+        if (result != null && result.getPayload() != null && !result.getPayload().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("**Tool Ergebnis**: ");
+            sb.append(title);
+            sb.append("\n\n");
+            sb.append(summary == null ? "" : summary);
+            sb.append("\n\n");
+            for (Map.Entry<String, Object> e : result.getPayload().entrySet()) {
+                sb.append("- ");
+                sb.append(e.getKey());
+                sb.append(": ");
+                sb.append(String.valueOf(e.getValue()));
+                sb.append("\n");
+            }
+            appendAssistantMessage(sb.toString());
+        }
+    }
+
+    private void appendAssistantMessage(String markdownText) {
+        String id = UUID.randomUUID().toString();
+        appendMessage(id, "assistant");
+        setMessageHtml(id, markdownText);
     }
 
     private static final class FileAttachment {

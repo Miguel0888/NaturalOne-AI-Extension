@@ -5,3 +5,8 @@ Bundle-SymbolicName: de.bund.zrb.natural.codeinsightbridge;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-Vendor: de.bund.zrb
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
+Bundle-Activator: de.bund.zrb.natural.tools.baseline.BaselineToolActivator
+Require-Bundle: org.eclipse.core.runtime,
+ org.eclipse.core.resources
+Export-Package: de.bund.zrb.natural.tools.api,
+ de.bund.zrb.natural.tools.core
