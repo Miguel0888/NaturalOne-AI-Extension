@@ -54,7 +54,7 @@ public final class WorkspaceSearchTextTool implements Tool {
                         .field("query", "Plain text or regex")
                         .field("isRegex", "true for regex (default false)")
                         .field("caseSensitive", "default false")
-                        .field("fileGlobs", "Optional globs; v1 supports simple suffix filtering like **/*.java")
+                        .field("fileGlobs", "Optional file path globs (e.g. **/*.java, /proj/**/foo?.xml). If empty: all files")
                         .field("maxResults", "Max total matches (default 200)")
                         .field("maxFiles", "Max files to scan (default 5000)")
                         .field("contextLines", "Lines of context before/after (default 1, max 3)")
@@ -103,7 +103,7 @@ public final class WorkspaceSearchTextTool implements Tool {
         final int contextLinesFinal = contextLines;
 
         List<String> fileGlobs = asStringList(request.getArguments().get("fileGlobs"));
-        final SuffixFilter suffixFilter = SuffixFilter.fromGlobs(fileGlobs);
+        final GlobFilter globFilter = GlobFilter.fromGlobs(fileGlobs);
 
         final Pattern pattern;
         if (isRegex) {
@@ -135,9 +135,10 @@ public final class WorkspaceSearchTextTool implements Tool {
                             return false;
                         }
                         IFile f = (IFile) resource;
-                        if (!suffixFilter.accept(f.getName())) {
+                        if (!globFilter.accept(f.getFullPath().toPortableString())) {
                             return true;
                         }
+
                         filesScanned[0]++;
                         scanFile(f, pattern, needle, caseSensitive, contextLinesFinal, maxResultsFinal, matches, truncated, monitor);
                         if (matches.size() >= maxResultsFinal) {
@@ -359,44 +360,94 @@ public final class WorkspaceSearchTextTool implements Tool {
         }
     }
 
-    private static final class SuffixFilter {
-        private final List<String> suffixes;
+    private static final class GlobFilter {
+        private final List<Pattern> patterns;
 
-        private SuffixFilter(List<String> suffixes) {
-            this.suffixes = suffixes;
+        private GlobFilter(List<Pattern> patterns) {
+            this.patterns = patterns;
         }
 
-        boolean accept(String name) {
-            if (suffixes == null || suffixes.isEmpty()) {
+        boolean accept(String portablePath) {
+            if (patterns == null || patterns.isEmpty()) {
                 return true;
             }
-            for (int i = 0; i < suffixes.size(); i++) {
-                if (name.endsWith(suffixes.get(i))) {
+            if (portablePath == null) {
+                return false;
+            }
+            // Normalize: ensure leading slash (workspace paths usually already have it)
+            String p = portablePath.startsWith("/") ? portablePath : ("/" + portablePath);
+            for (int i = 0; i < patterns.size(); i++) {
+                if (patterns.get(i).matcher(p).matches()) {
                     return true;
                 }
             }
             return false;
         }
 
-        static SuffixFilter fromGlobs(List<String> globs) {
+        static GlobFilter fromGlobs(List<String> globs) {
             if (globs == null || globs.isEmpty()) {
-                return new SuffixFilter(Collections.<String>emptyList());
+                return new GlobFilter(Collections.<Pattern>emptyList());
             }
-            List<String> s = new ArrayList<String>();
+            List<Pattern> out = new ArrayList<Pattern>();
             for (int i = 0; i < globs.size(); i++) {
                 String g = globs.get(i);
                 if (g == null) {
                     continue;
                 }
                 String t = g.trim();
-                // support **/*.ext
-                int star = t.lastIndexOf("*.");
-                if (star >= 0 && star + 2 < t.length()) {
-                    s.add(t.substring(star + 1)); // includes dot
+                if (t.isEmpty()) {
+                    continue;
                 }
+                out.add(Pattern.compile(globToRegex(t)));
             }
-            return new SuffixFilter(s);
+            return new GlobFilter(out);
+        }
+
+        // Supports: * (no '/'), ? (no '/'), ** (any incl '/'), literals.
+        private static String globToRegex(String glob) {
+            String g = glob;
+            StringBuilder sb = new StringBuilder();
+            sb.append("^");
+            // Make matching consistent for workspace paths
+            if (!g.startsWith("/")) {
+                sb.append("/");
+            }
+
+            int i = 0;
+            while (i < g.length()) {
+                char c = g.charAt(i);
+                if (c == '*') {
+                    boolean isDoubleStar = (i + 1 < g.length()) && g.charAt(i + 1) == '*';
+                    if (isDoubleStar) {
+                        sb.append(".*");
+                        i += 2;
+                    } else {
+                        sb.append("[^/]*");
+                        i++;
+                    }
+                    continue;
+                }
+                if (c == '?') {
+                    sb.append("[^/]");
+                    i++;
+                    continue;
+                }
+                if (c == '/') {
+                    sb.append("/");
+                    i++;
+                    continue;
+                }
+
+                // escape regex meta
+                if (".\\+()^${}|[]".indexOf(c) >= 0) {
+                    sb.append('\\');
+                }
+                sb.append(c);
+                i++;
+            }
+
+            sb.append("$");
+            return sb.toString();
         }
     }
 }
-
