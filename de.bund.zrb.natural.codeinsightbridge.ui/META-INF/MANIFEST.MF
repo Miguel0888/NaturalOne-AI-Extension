@@ -7,6 +7,8 @@ Bundle-Vendor: de.bund.zrb
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
+ org.eclipse.core.resources,
  org.eclipse.jface,
- org.eclipse.swt
+ org.eclipse.swt,
+ org.eclipse.ui.ide
 Bundle-ActivationPolicy: lazy

@@ -23,6 +23,12 @@ import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.custom.ScrolledComposite;
 import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.DND;
+import org.eclipse.swt.dnd.DropTarget;
+import org.eclipse.swt.dnd.DropTargetAdapter;
+import org.eclipse.swt.dnd.DropTargetEvent;
+import org.eclipse.swt.dnd.FileTransfer;
+import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.events.KeyAdapter;
 import org.eclipse.swt.events.KeyEvent;
@@ -50,6 +56,14 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.ToolBar;
 import org.eclipse.swt.widgets.ToolItem;
+import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.ide.IDE;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.PlatformUI;
 import org.osgi.framework.FrameworkUtil;
@@ -129,6 +143,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private final Map<String, String> autocompleteModel;
 
     private final List<FileAttachment> attachments;
+    private int selectedAttachmentIndex;
     private final List<ModelOption> providers;
 
     private final ChatHistory chatHistory;
@@ -159,6 +174,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         this.autocompleteModel.put("history", "Show chat history menu");
 
         this.attachments = new ArrayList<FileAttachment>();
+        this.selectedAttachmentIndex = -1;
         this.providers = createDefaultProviders();
         this.chatHistory = new ChatHistory();
         this.preferencesNodeName = FrameworkUtil.getBundle(ChatView.class).getSymbolicName();
@@ -529,9 +545,106 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         attachmentsScroll.setContent(attachmentChips);
         attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 
+        installAttachmentDnD(bar);
+        installAttachmentDnD(attachmentsScroll);
+        installAttachmentDnD(attachmentChips);
+
         renderAttachments();
 
         return bar;
+    }
+
+    private void installAttachmentDnD(org.eclipse.swt.widgets.Control control) {
+        if (control == null || control.isDisposed()) {
+            return;
+        }
+
+        DropTarget target = new DropTarget(control, DND.DROP_COPY | DND.DROP_DEFAULT);
+        target.setTransfer(new Transfer[]{FileTransfer.getInstance()});
+        target.addDropListener(new DropTargetAdapter() {
+            @Override
+            public void drop(DropTargetEvent event) {
+                if (!FileTransfer.getInstance().isSupportedType(event.currentDataType)) {
+                    return;
+                }
+                Object data = event.data;
+                if (!(data instanceof String[])) {
+                    return;
+                }
+                String[] paths = (String[]) data;
+                if (paths.length == 0) {
+                    return;
+                }
+                for (String p : paths) {
+                    if (p == null || p.trim().isEmpty()) {
+                        continue;
+                    }
+                    addAttachmentIfMissing(p.trim());
+                }
+                renderAttachments();
+            }
+        });
+    }
+
+    private void addAttachmentIfMissing(String absolutePath) {
+        for (FileAttachment a : attachments) {
+            if (a != null && absolutePath.equalsIgnoreCase(a.path)) {
+                return;
+            }
+        }
+        String display = shortenFileName(new java.io.File(absolutePath).getName(), 32);
+        attachments.add(new FileAttachment(absolutePath, display));
+    }
+
+    private static String shortenFileName(String name, int maxLen) {
+        if (name == null) {
+            return "";
+        }
+        String n = name.trim();
+        if (n.length() <= maxLen) {
+            return n;
+        }
+        int dot = n.lastIndexOf('.');
+        String ext = (dot > 0 && dot < n.length() - 1) ? n.substring(dot) : "";
+        String base = (dot > 0) ? n.substring(0, dot) : n;
+        int keep = Math.max(8, maxLen - ext.length() - 1);
+        if (base.length() <= keep) {
+            return base + "…" + ext;
+        }
+        return base.substring(0, keep) + "…" + ext;
+    }
+
+    private void openAttachment(FileAttachment a) {
+        if (a == null || a.path == null || a.path.trim().isEmpty()) {
+            return;
+        }
+        try {
+            IWorkbenchWindow window = getSite().getWorkbenchWindow();
+            if (window == null) {
+                return;
+            }
+            IWorkbenchPage page = window.getActivePage();
+            if (page == null) {
+                return;
+            }
+
+            // Prefer workspace file if possible
+            IPath p = new Path(a.path);
+            IFile wsFile = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(p);
+            if (wsFile != null && wsFile.exists()) {
+                IDE.openEditor(page, wsFile, true);
+                return;
+            }
+
+            java.io.File f = new java.io.File(a.path);
+            if (f.exists()) {
+                IDE.openEditor(page, f.toURI(), "", true);
+            }
+        } catch (PartInitException ex) {
+            showNotification("Could not open file: " + a.displayName, Duration.ofSeconds(3), NotificationType.ERROR);
+        } catch (Exception ex) {
+            showNotification("Could not open file: " + a.displayName, Duration.ofSeconds(3), NotificationType.ERROR);
+        }
     }
 
     private Composite createPromptContainer(Composite parent, String persistedMode, String persistedProviderId) {
@@ -881,6 +994,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private void clearAttachments() {
         attachments.clear();
+        selectedAttachmentIndex = -1;
         renderAttachments();
     }
 
@@ -896,7 +1010,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         String[] names = dialog.getFileNames();
         for (String name : names) {
             String path = dir + System.getProperty("file.separator") + name;
-            attachments.add(new FileAttachment(path, name));
+            addAttachmentIfMissing(path);
         }
         renderAttachments();
     }
@@ -948,6 +1062,38 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         Label name = new Label(chip, SWT.NONE);
         name.setText(a.displayName);
+        name.setToolTipText(a.path);
+
+        // selection + open
+        MouseAdapter selectAndOpen = new MouseAdapter() {
+            @Override
+            public void mouseDown(MouseEvent e) {
+                selectedAttachmentIndex = index;
+                renderAttachments();
+            }
+
+            @Override
+            public void mouseDoubleClick(MouseEvent e) {
+                openAttachment(a);
+            }
+        };
+        chip.addMouseListener(selectAndOpen);
+        name.addMouseListener(selectAndOpen);
+
+        chip.setToolTipText(a.path);
+
+        chip.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.keyCode == SWT.DEL) {
+                    if (selectedAttachmentIndex >= 0 && selectedAttachmentIndex < attachments.size()) {
+                        attachments.remove(selectedAttachmentIndex);
+                        selectedAttachmentIndex = -1;
+                        renderAttachments();
+                    }
+                }
+            }
+        });
 
         Label remove = new Label(chip, SWT.NONE);
         remove.setText("✕");
@@ -957,11 +1103,19 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             public void mouseUp(MouseEvent e) {
                 if (index >= 0 && index < attachments.size()) {
                     attachments.remove(index);
+                    if (selectedAttachmentIndex == index) {
+                        selectedAttachmentIndex = -1;
+                    } else if (selectedAttachmentIndex > index) {
+                        selectedAttachmentIndex--;
+                    }
                     renderAttachments();
                 }
             }
         });
 
+        if (index == selectedAttachmentIndex) {
+            chip.setBackground(uiBorder != null ? uiBorder : inputBackground);
+        }
         applyThemeToChip(chip, name, remove);
     }
 
