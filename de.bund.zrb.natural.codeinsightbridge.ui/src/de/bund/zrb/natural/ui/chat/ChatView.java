@@ -514,13 +514,40 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         layout.horizontalSpacing = 8;
         bar.setLayout(layout);
 
-        ToolBar left = new ToolBar(bar, SWT.FLAT);
-        left.setLayoutData(new GridData(SWT.BEGINNING, SWT.CENTER, false, false));
+        // Copilot-like: a central dropzone that is also clickable.
+        Composite dropZone = new Composite(bar, SWT.BORDER);
+        dropZone.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        GridLayout dzLayout = new GridLayout(2, false);
+        dzLayout.marginWidth = 10;
+        dzLayout.marginHeight = 6;
+        dzLayout.horizontalSpacing = 8;
+        dropZone.setLayout(dzLayout);
 
-        ToolItem attach = new ToolItem(left, SWT.PUSH);
-        attach.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE));
-        attach.setToolTipText("Attach files");
-        attach.addSelectionListener(new SelectionAdapter() {
+        Label dzIcon = new Label(dropZone, SWT.NONE);
+        dzIcon.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE));
+        dzIcon.setToolTipText("Attach files");
+
+        Label dzText = new Label(dropZone, SWT.NONE);
+        dzText.setText("Dateien hier ablegen oder klicken zum Hinzufügen");
+        dzText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        dropZone.setToolTipText("Dateien hier ablegen oder klicken zum Hinzufügen");
+
+        MouseAdapter openFileDialogOnClick = new MouseAdapter() {
+            @Override
+            public void mouseUp(MouseEvent e) {
+                openFileDialogAndAttach();
+            }
+        };
+        dropZone.addMouseListener(openFileDialogOnClick);
+        dzIcon.addMouseListener(openFileDialogOnClick);
+        dzText.addMouseListener(openFileDialogOnClick);
+
+        ToolBar right = new ToolBar(bar, SWT.FLAT);
+        right.setLayoutData(new GridData(SWT.END, SWT.CENTER, false, false));
+        ToolItem attachButton = new ToolItem(right, SWT.PUSH);
+        attachButton.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_OBJ_FILE));
+        attachButton.setToolTipText("Dateien hinzufügen");
+        attachButton.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 openFileDialogAndAttach();
@@ -528,7 +555,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         });
 
         attachmentsScroll = new ScrolledComposite(bar, SWT.H_SCROLL | SWT.V_SCROLL);
-        attachmentsScroll.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        GridData scrollData = new GridData(SWT.FILL, SWT.CENTER, true, false);
+        scrollData.horizontalSpan = 2;
+        attachmentsScroll.setLayoutData(scrollData);
         attachmentsScroll.setExpandHorizontal(true);
         attachmentsScroll.setExpandVertical(true);
 
@@ -546,6 +575,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 
         installAttachmentDnD(bar);
+        installAttachmentDnD(dropZone);
+        installAttachmentDnD(dzIcon);
+        installAttachmentDnD(dzText);
         installAttachmentDnD(attachmentsScroll);
         installAttachmentDnD(attachmentChips);
 
@@ -563,9 +595,27 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         target.setTransfer(new Transfer[]{FileTransfer.getInstance()});
         target.addDropListener(new DropTargetAdapter() {
             @Override
+            public void dragEnter(DropTargetEvent event) {
+                if (FileTransfer.getInstance().isSupportedType(event.currentDataType)) {
+                    event.detail = DND.DROP_COPY;
+                }
+            }
+
+            @Override
+            public void dragOver(DropTargetEvent event) {
+                if (FileTransfer.getInstance().isSupportedType(event.currentDataType)) {
+                    event.detail = DND.DROP_COPY;
+                    event.feedback = DND.FEEDBACK_SELECT;
+                }
+            }
+
+            @Override
             public void drop(DropTargetEvent event) {
                 if (!FileTransfer.getInstance().isSupportedType(event.currentDataType)) {
                     return;
+                }
+                if (event.data == null) {
+                    event.data = FileTransfer.getInstance().nativeToJava(event.currentDataType);
                 }
                 Object data = event.data;
                 if (!(data instanceof String[])) {
