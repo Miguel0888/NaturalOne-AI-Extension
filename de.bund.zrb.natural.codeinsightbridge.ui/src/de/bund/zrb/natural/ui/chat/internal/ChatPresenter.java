@@ -17,6 +17,22 @@ public interface ChatPresenter {
 
     void onChatModelSelected(String modelId);
 
+    /**
+     * Called when the UI switches to another chat session.
+     * Presenter implementations can reset session-scoped internal state here.
+     */
+    void onSessionChanged(String sessionId);
+
+    /**
+     * Persist session-scoped presenter state (e.g. last user prompts used for resend).
+     */
+    Object snapshotSessionState();
+
+    /**
+     * Restore a session-scoped presenter state previously captured via {@link #snapshotSessionState()}.
+     */
+    void restoreSessionState(Object state);
+
     void onCopyCode(String code);
 
     void onInsertCode(String code);

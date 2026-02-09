@@ -21,12 +21,15 @@ public final class DummyChatPresenter implements ChatPresenter {
 
     private String selectedModelId;
 
+    private String activeSessionId;
+
     public DummyChatPresenter(ChatViewPort view, MiniMarkdownParser markdown) {
         this.view = view;
         this.markdown = markdown;
         this.userMessages = new ArrayList<String>();
         this.generationId = new AtomicLong(0L);
         this.selectedModelId = "custom";
+        this.activeSessionId = "";
     }
 
     @Override
@@ -123,6 +126,34 @@ public final class DummyChatPresenter implements ChatPresenter {
             return;
         }
         view.removeMessage(messageId);
+    }
+
+    @Override
+    public void onSessionChanged(String sessionId) {
+        this.activeSessionId = sessionId == null ? "" : sessionId;
+        // Session change implies: stop streaming and keep per-session resend state isolated.
+        generationId.incrementAndGet();
+        userMessages.clear();
+    }
+
+    @Override
+    public Object snapshotSessionState() {
+        // Keep it simple and serializable: copy userMessages list.
+        return new ArrayList<String>(userMessages);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void restoreSessionState(Object state) {
+        generationId.incrementAndGet();
+        userMessages.clear();
+        if (state instanceof List) {
+            for (Object o : ((List<?>) state)) {
+                if (o instanceof String) {
+                    userMessages.add((String) o);
+                }
+            }
+        }
     }
 
     private void streamDummyAnswer(final String assistantId, final String userText) {

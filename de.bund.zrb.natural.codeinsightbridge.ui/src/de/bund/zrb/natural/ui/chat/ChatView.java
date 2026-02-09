@@ -133,6 +133,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private final ChatHistory chatHistory;
 
+    private final Map<String, Object> presenterSessionStates;
+
     private boolean darkTheme;
 
     private Color uiBackground;
@@ -162,6 +164,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         this.preferencesNodeName = FrameworkUtil.getBundle(ChatView.class).getSymbolicName();
         this.themeMode = ThemeMode.AUTO;
         this.darkTheme = true;
+        this.presenterSessionStates = new LinkedHashMap<String, Object>();
     }
 
     @Override
@@ -204,6 +207,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         registerThemeListener();
 
         chatHistory.ensureActiveSessionExists();
+        presenter.onSessionChanged(chatHistory.getActiveSessionId());
         showWelcome();
     }
 
@@ -409,6 +413,48 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         Point pt = toolbar.toDisplay(new Point(rect.x, rect.y + rect.height));
         historyMenu.setLocation(pt);
         historyMenu.setVisible(true);
+    }
+
+    private void rebuildHistoryMenu() {
+        if (historyMenu == null || historyMenu.isDisposed()) {
+            return;
+        }
+
+        for (MenuItem item : historyMenu.getItems()) {
+            item.dispose();
+        }
+
+        List<ChatSession> sessions = new ArrayList<ChatSession>(chatHistory.getArchivedSessions());
+        Collections.reverse(sessions); // newest first
+
+        if (sessions.isEmpty()) {
+            MenuItem empty = new MenuItem(historyMenu, SWT.PUSH);
+            empty.setText("(No previous chats)");
+            empty.setEnabled(false);
+            return;
+        }
+
+        for (final ChatSession session : sessions) {
+            MenuItem it = new MenuItem(historyMenu, SWT.PUSH);
+            boolean isActive = chatHistory.isActive(session);
+            it.setText(formatHistoryEntry(session, isActive));
+            it.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    loadSession(session);
+                }
+            });
+        }
+    }
+
+    private String formatHistoryEntry(ChatSession session, boolean isActive) {
+        if (session == null) {
+            return "";
+        }
+        String title = session.getDisplayTitle();
+        String ts = HISTORY_TITLE_FORMAT.format(session.createdAt);
+        String prefix = isActive ? "• " : "";
+        return prefix + title + "  (" + ts + ")";
     }
 
     private void openToolsMenu(ToolBar toolbar) {
@@ -704,64 +750,58 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     }
 
     private void startNewChat() {
+        persistPresenterStateForActiveSession();
         chatHistory.archiveActiveSession();
         chatHistory.ensureActiveSessionExists();
+
+        presenter.onSessionChanged(chatHistory.getActiveSessionId());
+        restorePresenterStateForActiveSession();
 
         clearAttachments();
         presenter.onClear();
     }
 
-    private void rebuildHistoryMenu() {
-        for (MenuItem item : historyMenu.getItems()) {
-            item.dispose();
-        }
-
-        List<ChatSession> sessions = new ArrayList<ChatSession>(chatHistory.getArchivedSessions());
-        Collections.reverse(sessions); // newest first
-
-        if (sessions.isEmpty()) {
-            MenuItem empty = new MenuItem(historyMenu, SWT.PUSH);
-            empty.setText("(No previous chats)");
-            empty.setEnabled(false);
-            return;
-        }
-
-        for (final ChatSession session : sessions) {
-            MenuItem it = new MenuItem(historyMenu, SWT.PUSH);
-            boolean isActive = chatHistory.isActive(session);
-            it.setText(formatHistoryEntry(session, isActive));
-            it.addSelectionListener(new SelectionAdapter() {
-                @Override
-                public void widgetSelected(SelectionEvent e) {
-                    loadSession(session);
-                }
-            });
-        }
-    }
-
-    private String formatHistoryEntry(ChatSession session, boolean isActive) {
-        if (session == null) {
-            return "";
-        }
-        String title = session.getDisplayTitle();
-        String ts = HISTORY_TITLE_FORMAT.format(session.createdAt);
-        String prefix = isActive ? "• " : "";
-        return prefix + title + "  (" + ts + ")";
-    }
 
     private void loadSession(ChatSession session) {
         if (session == null) {
             return;
         }
 
-        List<RenderedMessage> snapshot = new ArrayList<RenderedMessage>(session.messages);
+        // No-op if it's already the active session
+        if (chatHistory.isActive(session)) {
+            return;
+        }
+
+        // Persist current state before switching
+        persistPresenterStateForActiveSession();
+
         chatHistory.activate(session);
 
-        resetBrowserPresentationOnly();
-        clearAttachments();
-        renderSnapshot(snapshot);
+        presenter.onSessionChanged(chatHistory.getActiveSessionId());
+        restorePresenterStateForActiveSession();
 
         showNotification("Loaded chat: " + session.title, Duration.ofSeconds(2), NotificationType.INFO);
+    }
+
+    private void persistPresenterStateForActiveSession() {
+        String id = chatHistory.getActiveSessionId();
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
+        try {
+            presenterSessionStates.put(id, presenter.snapshotSessionState());
+        } catch (Exception ex) {
+            // best-effort
+        }
+    }
+
+    private void restorePresenterStateForActiveSession() {
+        String id = chatHistory.getActiveSessionId();
+        if (id == null || id.trim().isEmpty()) {
+            return;
+        }
+        Object state = presenterSessionStates.get(id);
+        presenter.restoreSessionState(state);
     }
 
     private static String deriveTitleFromFirstUserMessage(List<RenderedMessage> messages) {
@@ -1602,6 +1642,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         private boolean isActive(ChatSession session) {
             return session != null && active != null && session.id.equals(active.id);
+        }
+
+        private String getActiveSessionId() {
+            return active == null ? "" : active.id;
         }
 
         private ChatSession newSession() {
