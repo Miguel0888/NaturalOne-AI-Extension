@@ -872,6 +872,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         clearAttachments();
         presenter.onClear();
+
+        // Ensure UI is aligned to the new active session.
+        resetBrowserPresentationOnly();
     }
 
 
@@ -892,6 +895,10 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         presenter.onSessionChanged(chatHistory.getActiveSessionId());
         restorePresenterStateForActiveSession();
+
+        // Re-render browser from the session snapshot to avoid mixed/duplicated DOM state.
+        resetBrowserPresentationOnly();
+        renderSnapshot(new ArrayList<RenderedMessage>(session.messages));
 
         showNotification("Loaded chat: " + session.title, Duration.ofSeconds(2), NotificationType.INFO);
     }
@@ -1539,6 +1546,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 chatHistory.clearActiveSessionMessages();
                 initializeChatView(browser);
                 applyThemeToBrowser();
+
+                // Keep selection state in sync with the now-empty view.
+                selectedAttachmentIndex = -1;
             }
         });
     }
