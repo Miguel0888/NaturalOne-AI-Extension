@@ -73,11 +73,22 @@ public final class ToolMenuBuilder {
             toolItem.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
-                    ToolRequest req = new ToolRequest(d.getId(), java.util.Collections.<String, Object>emptyMap(), ToolOrigin.USER,
-                            "user-" + String.valueOf(System.currentTimeMillis()));
-                    ToolResult res = gateway.executeTool(req, context);
+                    // Clicking the tool name means: open manual run (debug/test) so users can provide args.
+                    ToolManualRunDialog dlg = new ToolManualRunDialog(shell, d, gateway, context);
+                    ToolResult res = dlg.openAndRun();
+                    ToolRequest req = dlg.getLastRequest();
+
                     if (sink != null) {
-                        sink.onToolResult(d, req, res);
+                        if (res != null) {
+                            sink.onToolResult(d, req, res);
+                        } else {
+                            // user canceled -> still provide a tiny feedback for "nothing happened"
+                            sink.onToolResult(d,
+                                    req != null ? req
+                                            : new ToolRequest(d.getId(), java.util.Collections.<String, Object>emptyMap(), ToolOrigin.USER,
+                                                    "manual-cancel-" + String.valueOf(System.currentTimeMillis())),
+                                    ToolResult.denied("Manuelle Ausführung abgebrochen."));
+                        }
                     }
                 }
             });
