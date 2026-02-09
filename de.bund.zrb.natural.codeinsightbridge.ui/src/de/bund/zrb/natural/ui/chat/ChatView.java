@@ -34,6 +34,8 @@ import org.eclipse.swt.events.KeyAdapter;
 import org.eclipse.swt.events.KeyEvent;
 import org.eclipse.swt.events.MouseAdapter;
 import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.MenuAdapter;
@@ -125,6 +127,8 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private ToolItem newChatToolItem;
     private ToolItem resendToolItem;
     private ToolItem toolsToolItem;
+    private ToolItem stopToolItem;
+    private ToolItem sendToolItem;
     private Menu toolsPopupMenu;
     private Menu settingsMenu;
     private Menu historyMenu;
@@ -139,6 +143,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
     private boolean autoScrollEnabled;
     private int notificationIdCounter;
+    private boolean isStreaming;
 
     private final Map<String, String> autocompleteModel;
 
@@ -167,6 +172,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         this.autoScrollEnabled = true;
         this.notificationIdCounter = 0;
+        this.isStreaming = false;
 
         this.autocompleteModel = new LinkedHashMap<String, String>();
         this.autocompleteModel.put("help", "Show available dummy commands");
@@ -759,25 +765,29 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         ToolBar actions = new ToolBar(bottomBar, SWT.FLAT | SWT.RIGHT);
         actions.setLayoutData(new GridData(SWT.END, SWT.CENTER, false, false));
 
-        ToolItem stop = new ToolItem(actions, SWT.PUSH);
-        stop.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_STOP));
-        stop.setToolTipText("Cancel");
-        stop.addSelectionListener(new SelectionAdapter() {
+        stopToolItem = new ToolItem(actions, SWT.PUSH);
+        stopToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_STOP));
+        stopToolItem.setToolTipText("Stop");
+        stopToolItem.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 presenter.onStop();
+                setStreaming(false);
             }
         });
 
-        ToolItem send = new ToolItem(actions, SWT.PUSH);
-        send.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD));
-        send.setToolTipText("Send (Enter)");
-        send.addSelectionListener(new SelectionAdapter() {
+        sendToolItem = new ToolItem(actions, SWT.PUSH);
+        sendToolItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_FORWARD));
+        sendToolItem.setToolTipText("Send (Enter)");
+        sendToolItem.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
                 sendIfNotEmpty();
             }
         });
+
+        updateSendEnabled();
+        setStreaming(false);
 
         setupAutocomplete(inputArea);
 
@@ -787,6 +797,13 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private Text createUserInput(Composite parent) {
         Text t = new Text(parent, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
         t.setMessage("Type a message... (Enter to send, Shift+Enter for a new line)");
+        t.addModifyListener(new ModifyListener() {
+            @Override
+            public void modifyText(ModifyEvent e) {
+                updateSendEnabled();
+                autoGrowInput();
+            }
+        });
         t.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -799,7 +816,27 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         return t;
     }
 
+    private void updateSendEnabled() {
+        if (sendToolItem == null || sendToolItem.isDisposed()) {
+            return;
+        }
+        boolean hasText = inputArea != null && !inputArea.isDisposed() && inputArea.getText() != null && !inputArea.getText().trim().isEmpty();
+        sendToolItem.setEnabled(hasText && !isStreaming);
+    }
+
+    private void setStreaming(boolean streaming) {
+        this.isStreaming = streaming;
+        if (stopToolItem != null && !stopToolItem.isDisposed()) {
+            stopToolItem.setEnabled(streaming);
+            stopToolItem.setToolTipText(streaming ? "Stop" : "Stop (inactive)");
+        }
+        updateSendEnabled();
+    }
+
     private void setupAutocomplete(Text text) {
+        if (text == null || text.isDisposed()) {
+            return;
+        }
         IContentProposalProvider provider = new IContentProposalProvider() {
             @Override
             public IContentProposal[] getProposals(String contents, int position) {
@@ -845,6 +882,35 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         adapter.setProposalAcceptanceStyle(ContentProposalAdapter.PROPOSAL_REPLACE);
     }
 
+    private void autoGrowInput() {
+        if (inputArea == null || inputArea.isDisposed()) {
+            return;
+        }
+        Object ld = inputArea.getLayoutData();
+        if (!(ld instanceof GridData)) {
+            return;
+        }
+        GridData gd = (GridData) ld;
+
+        // Grow up to 6 lines; afterwards the Text keeps its V_SCROLL.
+        int maxLines = 6;
+        int lineHeight = inputArea.getLineHeight();
+        int lineCount = Math.max(1, inputArea.getLineCount());
+        int lines = Math.min(maxLines, lineCount);
+
+        int wanted = lines * lineHeight + 10; // small padding
+        // Keep within reasonable bounds
+        wanted = Math.max(60, Math.min(160, wanted));
+
+        if (gd.heightHint != wanted) {
+            gd.heightHint = wanted;
+            Composite p = inputArea.getParent();
+            if (p != null && !p.isDisposed()) {
+                p.layout(true, true);
+            }
+        }
+    }
+
     private void sendIfNotEmpty() {
         if (inputArea == null || inputArea.isDisposed()) {
             return;
@@ -866,6 +932,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         String decorated = decorateWithContext(trimmed);
 
         presenter.onSendUserMessage(decorated);
+        setStreaming(true);
     }
 
     private String decorateWithContext(String trimmed) {
@@ -1671,6 +1738,16 @@ public final class ChatView extends ViewPart implements ChatViewPort {
                 browser.execute(js);
                 if (autoScrollEnabled) {
                     browser.execute("window.scrollTo(0, document.body.scrollHeight);");
+                }
+
+                // End streaming after a short quiet period (because dummy responses stream in ticks).
+                if (isStreaming) {
+                    Display.getDefault().timerExec(250, new Runnable() {
+                        @Override
+                        public void run() {
+                            setStreaming(false);
+                        }
+                    });
                 }
             }
         });
