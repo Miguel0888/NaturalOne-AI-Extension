@@ -22,6 +22,7 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.custom.ScrolledComposite;
+import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.DropTarget;
@@ -207,20 +208,32 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         Composite header = createConversationHeader(root);
         header.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
-        Composite browserContainer = new Composite(root, SWT.NONE);
+        // Splitter between output (browser) and input (attachments + prompt)
+        SashForm sash = new SashForm(root, SWT.VERTICAL);
+        sash.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+
+        Composite browserContainer = new Composite(sash, SWT.NONE);
         browserContainer.setLayout(new FillLayout());
-        browserContainer.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+
+        Composite inputContainer = new Composite(sash, SWT.NONE);
+        GridLayout inputLayout = new GridLayout(1, false);
+        inputLayout.marginWidth = 0;
+        inputLayout.marginHeight = 0;
+        inputContainer.setLayout(inputLayout);
+
+        // Default: more space for output than input
+        sash.setWeights(new int[] { 75, 25 });
 
         browser = new Browser(browserContainer, SWT.NONE);
         initializeFunctions(browser);
         initializeChatView(browser);
 
-        attachmentsBar = createAttachmentsBar(root);
+        attachmentsBar = createAttachmentsBar(inputContainer);
         GridData attachmentsData = new GridData(SWT.FILL, SWT.CENTER, true, false);
-        attachmentsData.heightHint = 0;
+        attachmentsData.heightHint = SWT.DEFAULT;
         attachmentsBar.setLayoutData(attachmentsData);
 
-        promptContainer = createPromptContainer(root, persistedMode, persistedProviderId);
+        promptContainer = createPromptContainer(inputContainer, persistedMode, persistedProviderId);
         GridData promptData = new GridData(SWT.FILL, SWT.BOTTOM, true, false);
         promptData.heightHint = 160;
         promptContainer.setLayoutData(promptData);
@@ -791,11 +804,15 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         setupAutocomplete(inputArea);
 
+        // Stable file drop target on input (browser DnD can be flaky)
+        installAttachmentDnD(inputArea);
+
         return prompt;
     }
 
     private Text createUserInput(Composite parent) {
-        Text t = new Text(parent, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL);
+        // Start without V_SCROLL: only enable when needed.
+        Text t = new Text(parent, SWT.MULTI | SWT.WRAP);
         t.setMessage("Type a message... (Enter to send, Shift+Enter for a new line)");
         t.addModifyListener(new ModifyListener() {
             @Override
@@ -908,6 +925,42 @@ public final class ChatView extends ViewPart implements ChatViewPort {
             if (p != null && !p.isDisposed()) {
                 p.layout(true, true);
             }
+        }
+
+        // Toggle V_SCROLL only when needed.
+        boolean needsScroll = lineCount > maxLines;
+        int style = inputArea.getStyle();
+        boolean hasVScroll = (style & SWT.V_SCROLL) != 0;
+        if (needsScroll != hasVScroll) {
+            // Recreate text control with/without V_SCROLL. Keep content.
+            String content = inputArea.getText();
+            Composite parent = inputArea.getParent();
+            GridData gdOld = (GridData) inputArea.getLayoutData();
+            inputArea.dispose();
+            inputArea = new Text(parent, SWT.MULTI | SWT.WRAP | (needsScroll ? SWT.V_SCROLL : SWT.NONE));
+            inputArea.setMessage("Type a message... (Enter to send, Shift+Enter for a new line)");
+            inputArea.setLayoutData(gdOld);
+            inputArea.setText(content == null ? "" : content);
+            // Re-wire listeners & autocomplete & drop
+            inputArea.addModifyListener(new ModifyListener() {
+                @Override
+                public void modifyText(ModifyEvent e) {
+                    updateSendEnabled();
+                    autoGrowInput();
+                }
+            });
+            inputArea.addKeyListener(new KeyAdapter() {
+                @Override
+                public void keyPressed(KeyEvent e) {
+                    if (e.keyCode == SWT.CR && (e.stateMask & SWT.SHIFT) == 0) {
+                        e.doit = false;
+                        sendIfNotEmpty();
+                    }
+                }
+            });
+            setupAutocomplete(inputArea);
+            installAttachmentDnD(inputArea);
+            parent.layout(true, true);
         }
     }
 
@@ -1160,18 +1213,30 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         }
 
         attachmentChips.layout(true, true);
+
+        boolean hasAttachments = !attachments.isEmpty();
         if (attachmentsScroll != null && !attachmentsScroll.isDisposed()) {
-            attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+            Object ld = attachmentsScroll.getLayoutData();
+            if (ld instanceof GridData) {
+                ((GridData) ld).exclude = !hasAttachments;
+            }
+            attachmentsScroll.setVisible(hasAttachments);
+            if (hasAttachments) {
+                attachmentsScroll.setMinSize(attachmentChips.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+            }
         }
 
-        Object layoutData = attachmentsBar.getLayoutData();
-        if (layoutData instanceof GridData) {
-            ((GridData) layoutData).heightHint = attachments.isEmpty() ? 0 : 42;
+        // Keep the bar visible so Dropzone/Button stays available.
+        Object barLd = attachmentsBar.getLayoutData();
+        if (barLd instanceof GridData) {
+            ((GridData) barLd).exclude = false;
+            ((GridData) barLd).heightHint = SWT.DEFAULT;
         }
 
-        org.eclipse.swt.widgets.Composite parent = attachmentsBar.getParent();
-        if (parent != null && !parent.isDisposed()) {
-            parent.layout(true, true);
+        attachmentsBar.layout(true, true);
+        org.eclipse.swt.widgets.Composite p = attachmentsBar.getParent();
+        if (p != null && !p.isDisposed()) {
+            p.layout(true, true);
         }
 
     }
