@@ -7,7 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.BundleException;
 import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceReference;
 
@@ -21,6 +23,7 @@ import de.bund.zrb.natural.tools.api.ToolDescriptor;
 public final class OsgiToolRegistry implements ToolRegistry {
 
     private static final String PROP_RANKING = "service.ranking";
+    private static final String BASELINE_BUNDLE_SYMBOLIC_NAME = "de.bund.zrb.natural.codeinsightbridge";
 
     private final BundleContext bundleContext;
 
@@ -100,6 +103,18 @@ public final class OsgiToolRegistry implements ToolRegistry {
             return Collections.emptyList();
         }
 
+        List<ToolRef> tools = getAllToolsOnce();
+        if (!tools.isEmpty()) {
+            return tools;
+        }
+
+        // Best-effort: ensure baseline bundle is started so its BundleActivator can register tools.
+        tryStartBaselineBundle();
+
+        return getAllToolsOnce();
+    }
+
+    private List<ToolRef> getAllToolsOnce() {
         List<ToolRef> tools = new ArrayList<ToolRef>();
         try {
             ServiceReference<?>[] refs = bundleContext.getAllServiceReferences(Tool.class.getName(), null);
@@ -120,6 +135,32 @@ public final class OsgiToolRegistry implements ToolRegistry {
         }
 
         return tools;
+    }
+
+    private void tryStartBaselineBundle() {
+        try {
+            Bundle b = bundleContext.getBundle(BASELINE_BUNDLE_SYMBOLIC_NAME);
+            if (b == null) {
+                // Fallback: search by name
+                for (Bundle candidate : bundleContext.getBundles()) {
+                    if (candidate != null && BASELINE_BUNDLE_SYMBOLIC_NAME.equals(candidate.getSymbolicName())) {
+                        b = candidate;
+                        break;
+                    }
+                }
+            }
+            if (b == null) {
+                return;
+            }
+            int state = b.getState();
+            if (state != Bundle.ACTIVE && state != Bundle.STARTING) {
+                b.start(Bundle.START_TRANSIENT);
+            }
+        } catch (BundleException ex) {
+            // best-effort
+        } catch (RuntimeException ex) {
+            // best-effort
+        }
     }
 
     private int getRanking(ServiceReference<?> ref) {
