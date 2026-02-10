@@ -78,10 +78,12 @@ import org.eclipse.ui.themes.IThemeManager;
 import de.bund.zrb.natural.ui.chat.internal.BundleResourceReader;
 import de.bund.zrb.natural.ui.chat.internal.ChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.ChatViewPort;
-import de.bund.zrb.natural.ui.chat.internal.DummyChatPresenter;
 import de.bund.zrb.natural.ui.chat.internal.EmbeddedFontCssBuilder;
 import de.bund.zrb.natural.ui.chat.internal.FallbackUiResources;
 import de.bund.zrb.natural.ui.chat.internal.MiniMarkdownParser;
+import de.bund.zrb.natural.ui.chat.internal.ProviderChatPresenter;
+import de.bund.zrb.natural.ui.chat.internal.ollama.OllamaChatClient;
+import de.bund.zrb.natural.ui.chat.internal.ollama.OllamaConfigStore;
 import de.bund.zrb.natural.ui.tools.ToolMenuBuilder;
 import de.bund.zrb.natural.ui.tools.ToolPolicyStore;
 
@@ -171,7 +173,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         this.resourceReader = new BundleResourceReader(ChatView.class);
         this.fontCssBuilder = new EmbeddedFontCssBuilder(resourceReader);
         this.markdown = new MiniMarkdownParser();
-        this.presenter = new DummyChatPresenter(this, markdown);
+        this.presenter = new ProviderChatPresenter(this, markdown, new OllamaChatClient(new OllamaConfigStore()));
 
         this.autoScrollEnabled = true;
         this.notificationIdCounter = 0;
@@ -1623,11 +1625,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     private static List<ModelOption> createDefaultProviders() {
         List<ModelOption> list = new ArrayList<ModelOption>();
         list.add(new ModelOption("custom", "Custom", null));
-        list.add(new ModelOption("openai", "ChatGPT", null));
-        list.add(new ModelOption("anthropic", "Claude", null));
-        list.add(new ModelOption("google", "Gemini", null));
-        list.add(new ModelOption("grok", "Grok", null));
-        list.add(new ModelOption("deepseek", "DeepSeek", null));
+        list.add(new ModelOption("ollama", "Ollama", null));
         return list;
     }
 
