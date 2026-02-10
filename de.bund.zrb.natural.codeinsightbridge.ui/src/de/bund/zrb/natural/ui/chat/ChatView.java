@@ -86,6 +86,7 @@ import de.bund.zrb.natural.ui.chat.internal.ollama.OllamaChatClient;
 import de.bund.zrb.natural.ui.chat.internal.ollama.OllamaConfigStore;
 import de.bund.zrb.natural.ui.tools.ToolMenuBuilder;
 import de.bund.zrb.natural.ui.tools.ToolPolicyStore;
+import de.bund.zrb.natural.ui.settings.ChatSettingsDialog;
 
 /**
  * Provide a Copilot-like chat UI (click dummy) without any real backend.
@@ -318,7 +319,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
         settingsItem.addSelectionListener(new SelectionAdapter() {
             @Override
             public void widgetSelected(SelectionEvent e) {
-                openSettingsMenu(toolbar);
+                // Open dialog-style settings UI (tree left, detail pane right)
+                ChatSettingsDialog dlg = new ChatSettingsDialog(getSite().getShell());
+                dlg.open();
             }
         });
         historyToolItem.addSelectionListener(new SelectionAdapter() {
@@ -437,13 +440,9 @@ public final class ChatView extends ViewPart implements ChatViewPort {
     }
 
     private void openSettingsMenu(ToolBar toolbar) {
-        if (settingsMenu == null || settingsMenu.isDisposed() || settingsItem == null) {
-            return;
-        }
-        Rectangle rect = settingsItem.getBounds();
-        Point pt = toolbar.toDisplay(new Point(rect.x, rect.y + rect.height));
-        settingsMenu.setLocation(pt);
-        settingsMenu.setVisible(true);
+        // Settings now uses a dialog - keep method for binary compatibility/calls.
+        ChatSettingsDialog dlg = new ChatSettingsDialog(getSite().getShell());
+        dlg.open();
     }
 
     private void openHistoryMenu() {
