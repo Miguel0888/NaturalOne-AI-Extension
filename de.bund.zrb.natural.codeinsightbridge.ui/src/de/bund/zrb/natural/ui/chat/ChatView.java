@@ -292,7 +292,7 @@ public final class ChatView extends ViewPart implements ChatViewPort {
 
         // Order like Copilot: Settings, History, New Chat, Resend, Tools
         settingsItem = new ToolItem(toolbar, SWT.PUSH);
-        settingsItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_ELCL_SYNCED));
+        settingsItem.setImage(PlatformUI.getWorkbench().getSharedImages().getImage(ISharedImages.IMG_TOOL_UP));
         settingsItem.setToolTipText("Settings");
 
         historyToolItem = new ToolItem(toolbar, SWT.PUSH);
