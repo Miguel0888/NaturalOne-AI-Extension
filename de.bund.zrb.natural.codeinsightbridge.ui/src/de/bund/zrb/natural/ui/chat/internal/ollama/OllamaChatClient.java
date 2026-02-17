@@ -48,8 +48,8 @@ public final class OllamaChatClient {
         activeConnection = conn;
 
         conn.setRequestMethod("POST");
-        conn.setConnectTimeout(2000);
-        conn.setReadTimeout(60000);
+        conn.setConnectTimeout(configStore.loadConnectTimeoutMs());
+        conn.setReadTimeout(configStore.loadReadTimeoutMs());
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
@@ -244,4 +244,3 @@ public final class OllamaChatClient {
         return sb.toString();
     }
 }
-

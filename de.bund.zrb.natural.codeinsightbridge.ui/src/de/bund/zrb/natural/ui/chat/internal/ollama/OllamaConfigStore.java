@@ -14,6 +14,10 @@ public final class OllamaConfigStore {
     private static final String PREF_OLLAMA_BASE_URL = "chat.ollama.baseUrl";
     private static final String PREF_OLLAMA_MODEL = "chat.ollama.model";
 
+    // Timeouts in milliseconds
+    private static final String PREF_OLLAMA_CONNECT_TIMEOUT_MS = "chat.ollama.connectTimeoutMs";
+    private static final String PREF_OLLAMA_READ_TIMEOUT_MS = "chat.ollama.readTimeoutMs";
+
     public String loadBaseUrl() {
         IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(PREF_NODE);
         String v = prefs.get(PREF_OLLAMA_BASE_URL, "http://localhost:11434");
@@ -27,5 +31,40 @@ public final class OllamaConfigStore {
         v = v == null ? "" : v.trim();
         return v.isEmpty() ? "llama3.1" : v;
     }
-}
 
+    public int loadConnectTimeoutMs() {
+        IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(PREF_NODE);
+        return readInt(prefs, PREF_OLLAMA_CONNECT_TIMEOUT_MS, 2000, 0, 300000);
+    }
+
+    public int loadReadTimeoutMs() {
+        IEclipsePreferences prefs = InstanceScope.INSTANCE.getNode(PREF_NODE);
+        return readInt(prefs, PREF_OLLAMA_READ_TIMEOUT_MS, 60000, 0, 300000);
+    }
+
+    private static int readInt(IEclipsePreferences prefs, String key, int def, int min, int max) {
+        if (prefs == null) {
+            return def;
+        }
+        try {
+            String raw = prefs.get(key, null);
+            if (raw == null) {
+                return def;
+            }
+            raw = raw.trim();
+            if (raw.isEmpty()) {
+                return def;
+            }
+            int v = Integer.parseInt(raw);
+            if (v < min) {
+                return min;
+            }
+            if (v > max) {
+                return max;
+            }
+            return v;
+        } catch (Exception ex) {
+            return def;
+        }
+    }
+}
